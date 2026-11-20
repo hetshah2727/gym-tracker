@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: gymflow
+      POSTGRES_PASSWORD: gymflow
+      POSTGRES_DB: gymflow
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gymflow"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: ./gymflow-backend
+    env_file: ./gymflow-backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://gymflow:gymflow@postgres:5432/gymflow
+      N8N_WEBHOOK_BASE_URL: http://n8n:5678/webhook
+    ports: ["8000:8000"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  n8n:
+    image: n8nio/n8n:1.80.0
+    ports: ["5678:5678"]
+    environment:
+      GENERIC_TIMEZONE: Asia/Kolkata
+    volumes: [n8ndata:/home/node/.n8n]
+
+  web:
+    build: ./gymflow-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+    ports: ["3000:3000"]
+    depends_on: [api]
+
+volumes:
+  pgdata:
+  n8ndata:
