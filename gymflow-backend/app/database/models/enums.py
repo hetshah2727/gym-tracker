@@ -92,10 +92,150 @@ class ConversionStatus(str, enum.Enum):
 
 
 class LeadStatus(str, enum.Enum):
+    """Sales pipeline stage. ``converted`` is shown as "Joined" (kept for backwards compatibility)."""
     NEW = "new"
     CONTACTED = "contacted"
+    INTERESTED = "interested"
+    TRIAL_BOOKED = "trial_booked"
+    TRIAL_ATTENDED = "trial_attended"
+    NEGOTIATION = "negotiation"
     CONVERTED = "converted"
     LOST = "lost"
+
+
+OPEN_LEAD_STATUSES = (LeadStatus.NEW, LeadStatus.CONTACTED, LeadStatus.INTERESTED, LeadStatus.TRIAL_BOOKED,
+                      LeadStatus.TRIAL_ATTENDED, LeadStatus.NEGOTIATION)
+
+
+class LeadSource(str, enum.Enum):
+    WEBSITE = "website"
+    WEBSITE_CHAT = "website_chat"
+    SEO_LANDING_PAGE = "seo_landing_page"
+    ORGANIC_SEARCH = "organic_search"
+    AI_SEARCH = "ai_search"
+    WHATSAPP = "whatsapp"
+    INSTAGRAM = "instagram"
+    WALK_IN = "walk_in"
+    GOOGLE_BUSINESS_PROFILE = "google_business_profile"
+    REFERRAL = "referral"
+    QR_CODE = "qr_code"
+    PAID_CAMPAIGN = "paid_campaign"
+    CORPORATE = "corporate"
+    MANUAL = "manual"
+    OTHER = "other"
+
+
+class Priority(str, enum.Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class TaskStatus(str, enum.Enum):
+    OPEN = "open"
+    DONE = "done"
+    CANCELLED = "cancelled"
+
+
+class TaskKind(str, enum.Enum):
+    FOLLOW_UP = "follow_up"
+    RENEWAL = "renewal"
+    PAYMENT = "payment"
+    NO_SHOW = "no_show"
+    ESCALATION = "escalation"
+    REVIEW = "review"
+    SEO = "seo"
+    OTHER = "other"
+
+
+class TrialStatus(str, enum.Enum):
+    BOOKED = "booked"
+    PENDING_REVIEW = "pending_review"  # slot passed, attendance not recorded yet
+    ATTENDED = "attended"
+    NO_SHOW = "no_show"                # confirmed by staff
+    CANCELLED = "cancelled"
+
+
+ACTIVE_TRIAL_STATUSES = (TrialStatus.BOOKED, TrialStatus.PENDING_REVIEW)
+
+
+class OpportunityType(str, enum.Enum):
+    UPCOMING_RENEWAL = "upcoming_renewal"
+    EXPIRED_MEMBERSHIP = "expired_membership"
+    OUTSTANDING_PAYMENT = "outstanding_payment"
+    FAILED_PAYMENT = "failed_payment"
+    TRIAL_NO_SHOW = "trial_no_show"
+    UNCONTACTED_LEAD = "uncontacted_lead"
+    OVERDUE_FOLLOW_UP = "overdue_follow_up"
+
+
+class OpportunityStatus(str, enum.Enum):
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    WON = "won"
+    LOST = "lost"
+    DISMISSED = "dismissed"
+
+
+OPEN_OPPORTUNITY_STATUSES = (OpportunityStatus.OPEN, OpportunityStatus.IN_PROGRESS)
+
+
+class AuditStatus(str, enum.Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class Severity(str, enum.Enum):
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    INFO = "info"
+
+
+class FindingStatus(str, enum.Enum):
+    OPEN = "open"
+    RESOLVED = "resolved"
+    IGNORED = "ignored"
+
+
+class ContentStatus(str, enum.Enum):
+    DRAFT = "draft"
+    APPROVED = "approved"
+    PUBLISHED = "published"
+    REJECTED = "rejected"
+
+
+class ConnectionStatus(str, enum.Enum):
+    NOT_CONNECTED = "not_connected"
+    PENDING = "pending"          # OAuth done, location/property not selected yet
+    CONNECTED = "connected"
+    EXPIRED = "expired"
+    ERROR = "error"
+
+
+class ConversationStatus(str, enum.Enum):
+    AI_ACTIVE = "ai_active"
+    HUMAN = "human"              # staff took over; AI stays silent
+    CLOSED = "closed"
+
+
+class ReplyStatus(str, enum.Enum):
+    NONE = "none"
+    DRAFTED = "drafted"
+    APPROVED = "approved"
+    PUBLISHED = "published"      # posted through the official API
+    COPIED = "copied"            # owner posted it manually
+
+
+class ActionStatus(str, enum.Enum):
+    PENDING = "pending"
+    EXECUTED = "executed"
+    REJECTED = "rejected"
+    FAILED = "failed"
 
 
 class SubscriptionStatus(str, enum.Enum):

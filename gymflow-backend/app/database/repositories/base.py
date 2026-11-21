@@ -70,6 +70,19 @@ class TenantRepository(Repository[M]):
         data["gym_id"] = self.gym_id
         return super().create(**data)
 
+    def add(self, **data: Any) -> M:
+        """Insert and flush without committing, so a service can group writes into one transaction."""
+        obj = self.model(**{**data, "gym_id": self.gym_id})
+        self.db.add(obj)
+        self.db.flush()
+        return obj
+
+    def first(self, *where: Any, order_by: Any = None) -> M | None:
+        stmt = self.query().where(*where)
+        if order_by is not None:
+            stmt = stmt.order_by(order_by)
+        return self.db.scalars(stmt.limit(1)).first()
+
     def update(self, obj: M, data: dict[str, Any]) -> M:
         data.pop("gym_id", None)
         return super().update(obj, data)

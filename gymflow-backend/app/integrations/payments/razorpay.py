@@ -37,6 +37,26 @@ def create_order(amount: float, receipt: str, currency: str = "INR", notes: dict
         raise PaymentGatewayError(str(exc)) from exc
 
 
+def create_payment_link(amount: float, reference_id: str, description: str, currency: str = "INR",
+                        customer: dict | None = None, notes: dict | None = None) -> dict:
+    """Hosted payment link (returns ``id`` and ``short_url``). Only call when configured."""
+    if not is_configured():
+        raise PaymentGatewayError("Razorpay is not configured")
+    try:
+        resp = httpx.post(
+            f"{RAZORPAY_API}/payment_links",
+            auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET),
+            json={"amount": int(round(amount * 100)), "currency": currency, "reference_id": reference_id[:40],
+                  "description": description[:2048], "customer": customer or {},
+                  "notify": {"sms": False, "email": False}, "notes": notes or {}},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except httpx.HTTPError as exc:
+        raise PaymentGatewayError(str(exc)) from exc
+
+
 def verify_webhook_signature(raw_body: bytes, signature: str | None) -> bool:
     if not settings.RAZORPAY_WEBHOOK_SECRET or not signature:
         return False

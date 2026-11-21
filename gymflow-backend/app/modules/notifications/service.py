@@ -37,8 +37,24 @@ def enqueue(db: Session, member: Member, channel: Channel, message: str, *, cate
     )
 
 
+def enqueue_raw(db: Session, recipient: str, channel: Channel, message: str, *, category: str = "general",
+                lead_id: uuid.UUID | None = None, member_id: uuid.UUID | None = None,
+                dedup_key: str | None = None, scheduled_for: datetime | None = None,
+                template_name: str | None = None, template_params: list[str] | None = None) -> Notification | None:
+    """Queue a message to any recipient (e.g. a lead). Flushes only; caller commits. None if duplicate."""
+    repo = TenantRepository(Notification, db)
+    if dedup_key and repo.count(Notification.dedup_key == dedup_key):
+        return None
+    return repo.add(member_id=member_id, lead_id=lead_id, channel=channel, recipient=recipient, message=message,
+                    category=category, dedup_key=dedup_key, template_name=template_name,
+                    template_params=template_params, scheduled_for=scheduled_for or datetime.now(timezone.utc))
+
+
 def _deliver(notification: Notification) -> SendResult:
     if notification.channel == Channel.WHATSAPP:
+        if notification.template_name:
+            return whatsapp.send_template(notification.recipient, notification.template_name,
+                                          [str(p) for p in notification.template_params or []])
         return whatsapp.send_text(notification.recipient, notification.message)
     if notification.channel == Channel.VOICE:
         return voice.place_call(notification.recipient, notification.message,

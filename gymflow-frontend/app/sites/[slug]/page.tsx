@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { SiteRenderer } from "@/components/website-editor/BlockRenderer";
+import { JsonLd } from "@/components/website-editor/PublicWidgets";
 import type { PublicSite } from "@/types";
 
 const API = process.env.API_URL_INTERNAL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
@@ -23,5 +24,10 @@ export default async function PublicGymSite({ params }: { params: Promise<{ slug
   const { slug } = await params;
   const data = await getSite(slug);
   if (!data) notFound();
-  return <SiteRenderer blocks={data.site.blocks} theme={data.site.theme} data={data} slug={data.site.slug} />;
+  return (
+    <>
+      <JsonLd data={data.site.seo.json_ld} />
+      <SiteRenderer blocks={data.site.blocks} theme={data.site.theme} data={data} slug={data.site.slug} />
+    </>
+  );
 }

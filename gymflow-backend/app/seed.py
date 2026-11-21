@@ -29,7 +29,7 @@ PRODUCTS = [
 ]
 
 
-def main() -> None:
+def _classic() -> None:
     with SessionLocal() as db:
         ensure_default_plans(db)
         if not db.scalar(select(User).where(User.email == ADMIN[0])):
@@ -60,6 +60,15 @@ def main() -> None:
                 assign_membership(db, member, plans[0], start_date=date.today() + timedelta(days=started),
                                   paid=i != 1)
     print(f"Seeded.\n  Platform admin: {ADMIN[0]} / {ADMIN[1]}\n  Gym owner:      {OWNER[0]} / {OWNER[1]}")
+
+
+def main() -> None:
+    from app.demo import ironcore
+
+    _classic()
+    with SessionLocal() as db:
+        result = ironcore.build(db)
+    print(f"  IronCore demo:  {ironcore.OWNER[0]} / {ironcore.OWNER[1]} ({result['status']})")
 
 
 if __name__ == "__main__":

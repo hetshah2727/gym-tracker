@@ -14,6 +14,9 @@
   --brand-fg: 4 20 10;
   --danger: 239 68 68;
   --warning: 245 158 11;
+  /* Chart series (validated: lightness band, chroma, CVD and contrast vs surface) */
+  --chart-1: 22 163 74;
+  --chart-2: 59 130 246;
   color-scheme: dark;
 }
 
@@ -29,6 +32,8 @@
     --brand-fg: 255 255 255;
     --danger: 220 38 38;
     --warning: 217 119 6;
+    --chart-1: 22 163 74;
+    --chart-2: 37 99 235;
     color-scheme: light;
   }
 }
@@ -44,6 +49,8 @@
   --brand-fg: 255 255 255;
   --danger: 220 38 38;
   --warning: 217 119 6;
+  --chart-1: 22 163 74;
+  --chart-2: 37 99 235;
   color-scheme: light;
 }
 

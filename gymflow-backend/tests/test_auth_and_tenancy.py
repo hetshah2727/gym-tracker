@@ -7,7 +7,7 @@ def test_register_seeds_gym_defaults(client, owner):
     plans = client.get(f"{API}/membership-plans", headers=owner).json()
     assert [p["name"] for p in plans] == ["Monthly", "Quarterly", "Half-Yearly", "Yearly"]
     rules = client.get(f"{API}/automation/rules", headers=owner).json()
-    assert len(rules) == 4
+    assert len(rules) == 6  # 30, 15, 7, 1 days before expiry; expired; payment due
     sub = client.get(f"{API}/subscriptions/current", headers=owner).json()
     assert sub["status"] == "trialing" and sub["plan"]["code"] == "growth"
 

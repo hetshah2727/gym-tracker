@@ -1,7 +1,7 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -12,7 +12,10 @@ from app.database.models import Gym, Lead, MembershipPlan, Trainer, Website
 from app.database.models.enums import LeadStatus
 from app.database.repositories.base import TenantRepository
 from app.database.session import get_db
-from app.integrations.n8n import client as n8n
+from app.core import rate_limit
+from app.database.models import LandingPage
+from app.database.models.enums import ContentStatus
+from app.modules.crm import service as crm
 from app.modules.common import ORMModel, get_or_404, slugify, unique_slug
 from app.modules.website_builder.templates import BLOCK_TYPES, TEMPLATES, default_blocks
 
@@ -64,6 +67,20 @@ class LeadIn(BaseModel):
     phone: str | None = Field(None, max_length=32)
     email: EmailStr | None = None
     message: str | None = Field(None, max_length=2000)
+    # Qualification (optional) - no health information is collected.
+    fitness_interest: str | None = Field(None, max_length=120)
+    interested_plan_id: uuid.UUID | None = None
+    preferred_joining_date: date | None = None
+    wants_trial: bool = False
+    whatsapp_opt_in: bool = False
+    # Attribution evidence captured by the page (only what the browser actually saw).
+    utm_source: str | None = Field(None, max_length=100)
+    utm_medium: str | None = Field(None, max_length=100)
+    utm_campaign: str | None = Field(None, max_length=100)
+    utm_content: str | None = Field(None, max_length=100)
+    referrer: str | None = Field(None, max_length=1000)
+    landing_page: str | None = Field(None, max_length=160)
+    website: str | None = Field(None, max_length=200, description="Honeypot - must stay empty")
 
 
 class LeadOut(ORMModel):
@@ -174,9 +191,13 @@ def _render_payload(db: Session, site: Website) -> dict:
         plans = TenantRepository(MembershipPlan, db).list(MembershipPlan.is_active.is_(True),
                                                          order_by=MembershipPlan.duration_days)
         trainers = TenantRepository(Trainer, db).list(Trainer.is_active.is_(True), order_by=Trainer.full_name)
+    with tenant_scope(site.gym_id):
+        pages = TenantRepository(LandingPage, db).list(LandingPage.website_id == site.id,
+                                                      LandingPage.status == ContentStatus.PUBLISHED, limit=100)
     return {
         "site": {"name": site.name, "slug": site.slug, "template": site.template, "theme": site.theme,
                  "seo": site.seo, "blocks": site.published_blocks},
+        "landing_pages": [{"slug": p.slug, "title": p.h1} for p in pages],
         "gym": {"name": gym.name, "phone": gym.phone, "email": gym.email, "address": gym.address,
                 "city": gym.city, "logo_url": gym.logo_url, "currency": gym.currency},
         "plans": [{"id": str(p.id), "name": p.name, "duration_days": p.duration_days, "price": float(p.price),
@@ -196,15 +217,24 @@ def get_public_site(slug: str, db: Session = Depends(get_db)):
     return _render_payload(db, _published_site(db, slug=slug))
 
 
-@public_router.post("/{slug}/leads", status_code=status.HTTP_201_CREATED)
+@public_router.post("/{slug}/leads", status_code=status.HTTP_201_CREATED,
+                   dependencies=[Depends(rate_limit.public_limit("public_lead", 10))])
 def submit_lead(slug: str, data: LeadIn, db: Session = Depends(get_db)):
+    """Workflow 1: enquiry -> validate -> duplicate check -> lead -> attribution -> score -> task -> notify."""
+    if data.website:  # honeypot filled in: a bot. Pretend success, store nothing.
+        return {"detail": "Thanks! The gym will contact you shortly."}
     if not data.phone and not data.email:
         raise HTTPException(422, "Phone or email is required")
     site = _published_site(db, slug=slug)
     with tenant_scope(site.gym_id):
-        lead = TenantRepository(Lead, db).create(website_id=site.id, **data.model_dump())
-    n8n.trigger("lead.created", {"gym_id": str(site.gym_id), "lead_id": str(lead.id), "name": lead.name,
-                                 "phone": lead.phone, "email": lead.email})
+        attribution = crm.attribute(
+            db, declared_source=None, referrer=data.referrer, landing_page_slug=data.landing_page,
+            utm={k: getattr(data, k) for k in ("utm_source", "utm_medium", "utm_campaign", "utm_content")})
+        crm.capture_lead(db, crm.LeadInput(
+            name=data.name, phone=data.phone, email=data.email, message=data.message,
+            fitness_interest=data.fitness_interest, interested_plan_id=data.interested_plan_id,
+            preferred_joining_date=data.preferred_joining_date, wants_trial=data.wants_trial,
+            whatsapp_opt_in=data.whatsapp_opt_in, website_id=site.id), attribution, actor="public")
     return {"detail": "Thanks! The gym will contact you shortly."}
 
 
@@ -218,7 +248,11 @@ def list_leads(status_: LeadStatus | None = Query(None, alias="status"), db: Ses
 
 
 @leads_router.patch("/{lead_id}", response_model=LeadOut)
-def update_lead(lead_id: uuid.UUID, new_status: LeadStatus, db: Session = Depends(get_db),
-                _=Depends(tenant_user(*GYM_STAFF))):
-    repo = TenantRepository(Lead, db)
-    return repo.update(get_or_404(repo, lead_id, "Lead"), {"status": new_status})
+def update_lead(lead_id: uuid.UUID, new_status: LeadStatus, lost_reason: str | None = None,
+                db: Session = Depends(get_db), user=Depends(tenant_user(*GYM_STAFF))):
+    """Legacy endpoint (kept for compatibility); uses the same validated pipeline rules as /crm."""
+    lead = get_or_404(TenantRepository(Lead, db), lead_id, "Lead")
+    crm.change_status(db, lead, new_status, user, lost_reason=lost_reason or ("Not specified" if new_status ==
+                                                                              LeadStatus.LOST else None))
+    db.refresh(lead)
+    return lead

@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
-  title: "GymFlow AI",
-  description: "Gym management, automation, AI nutrition, affiliate store and website builder for gyms.",
+  title: "GymFlow – AI-Powered Gym Revenue Growth Engine",
+  description: "Discover more customers. Convert more enquiries. Recover more revenue. Grow your gym.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

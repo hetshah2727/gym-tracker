@@ -51,6 +51,10 @@ class Payment(IdMixin, TimestampMixin, TenantMixin, Base):
     gateway_order_id: Mapped[str | None] = mapped_column(String(120), index=True)
     gateway_payment_id: Mapped[str | None] = mapped_column(String(120))
     notes: Mapped[str | None] = mapped_column(Text)
+    failure_reason: Mapped[str | None] = mapped_column(String(255))
+    failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # "manual" (staff recorded), "gateway" (verified by a signed provider webhook), "demo"
+    verified_by: Mapped[str | None] = mapped_column(String(32))
 
 
 class Attendance(IdMixin, TenantMixin, Base):

@@ -3,8 +3,9 @@
 import { Clock, Mail, MapPin, Phone } from "lucide-react";
 import { useState, type CSSProperties, type FormEvent } from "react";
 import type { PublicSite, SiteBlock, Website } from "@/types";
+import { captureAttribution, ChatWidget, TrialBooking } from "./PublicWidgets";
 
-export type SiteData = Pick<PublicSite, "gym" | "plans" | "trainers">;
+export type SiteData = Pick<PublicSite, "gym" | "plans" | "trainers"> & Partial<Pick<PublicSite, "landing_pages">>;
 
 function palette(theme: Website["theme"]) {
   const dark = theme.mode === "dark";
@@ -26,7 +27,7 @@ function money(value: number, currency: string) {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
 }
 
-function LeadForm({ slug, preview }: { slug?: string; preview?: boolean }) {
+export function LeadForm({ slug, preview, landingPage }: { slug?: string; preview?: boolean; landingPage?: string }) {
   const [state, setState] = useState<"idle" | "sending" | "done" | "error">("idle");
   const [error, setError] = useState("");
 
@@ -34,13 +35,15 @@ function LeadForm({ slug, preview }: { slug?: string; preview?: boolean }) {
     e.preventDefault();
     if (preview || !slug) return;
     setState("sending");
-    const data = Object.fromEntries(new FormData(e.currentTarget));
+    const form = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, string>;
+    const data: Record<string, unknown> = { ...captureAttribution(landingPage), ...form,
+      wants_trial: form.wants_trial === "on", whatsapp_opt_in: form.whatsapp_opt_in === "on" };
     const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
     try {
       const res = await fetch(`${base}/public/sites/${slug}/leads`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(Object.fromEntries(Object.entries(data).filter(([, v]) => v !== ""))),
+        body: JSON.stringify(Object.fromEntries(Object.entries(data).filter(([, v]) => v !== "" && v !== undefined))),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail ?? "Please check your details");
       setState("done");
@@ -58,7 +61,10 @@ function LeadForm({ slug, preview }: { slug?: string; preview?: boolean }) {
       <input name="name" required placeholder="Your name" className={input} style={inputStyle} />
       <input name="phone" required placeholder="Phone number" inputMode="tel" className={input} style={inputStyle} />
       <input name="email" type="email" placeholder="Email (optional)" className={input} style={inputStyle} />
-      <textarea name="message" rows={3} placeholder="What are your fitness goals?" className={input} style={inputStyle} />
+      <textarea name="message" rows={3} placeholder="What would you like to know?" className={input} style={inputStyle} />
+      <input name="website" tabIndex={-1} autoComplete="off" aria-hidden className="hidden" />
+      <label className="flex items-center gap-2 text-xs" style={{ color: "var(--site-muted)" }}><input type="checkbox" name="wants_trial" /> I&apos;d like a trial session</label>
+      <label className="flex items-center gap-2 text-xs" style={{ color: "var(--site-muted)" }}><input type="checkbox" name="whatsapp_opt_in" /> You may contact me on WhatsApp</label>
       {state === "error" && <p className="text-sm text-red-500">{error}</p>}
       <button disabled={state === "sending" || preview} className="rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60" style={{ background: "var(--site-primary)" }}>
         {state === "sending" ? "Sending…" : "Request a callback"}
@@ -203,7 +209,7 @@ export function Block({ block, data, slug, preview }: { block: SiteBlock; data: 
               {(p.email || data.gym.email) && <li className="flex items-center gap-2"><Mail className="h-4 w-4" style={{ color: "var(--site-primary)" }} />{p.email || data.gym.email}</li>}
               {(p.address || data.gym.address) && <li className="flex items-start gap-2"><MapPin className="mt-0.5 h-4 w-4" style={{ color: "var(--site-primary)" }} />{p.address || data.gym.address}</li>}
             </ul>
-            {p.showLeadForm !== false && <LeadForm slug={slug} preview={preview} />}
+            {p.showLeadForm !== false && <div><LeadForm slug={slug} preview={preview} />{!preview && slug && <TrialBooking slug={slug} />}</div>}
           </div>
         </section>
       );
@@ -219,8 +225,14 @@ export function SiteRenderer({ blocks, theme, data, slug, preview }: { blocks: S
         <Block key={b.id} block={b} data={data} slug={slug} preview={preview} />
       ))}
       <footer className="px-5 py-6 text-center text-xs sm:px-10" style={{ color: "var(--site-muted)", borderTop: "1px solid var(--site-border)" }}>
-        © {new Date().getFullYear()} {data.gym.name} · Powered by GymFlow AI
+        {!!data.landing_pages?.length && slug && (
+          <nav aria-label="Services" className="mb-3 flex flex-wrap justify-center gap-x-4 gap-y-1">
+            {data.landing_pages.map((lp) => <a key={lp.slug} href={`/sites/${slug}/${lp.slug}`} className="underline">{lp.title}</a>)}
+          </nav>
+        )}
+        © {new Date().getFullYear()} {data.gym.name} · Powered by GymFlow
       </footer>
+      {!preview && slug && <ChatWidget slug={slug} gymName={data.gym.name} />}
     </div>
   );
 }

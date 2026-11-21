@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    APP_NAME: str = "GymFlow AI"
+    APP_NAME: str = "GymFlow"
     ENVIRONMENT: str = "development"
     API_PREFIX: str = "/api/v1"
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
@@ -59,6 +59,36 @@ class Settings(BaseSettings):
     # Website builder / subscriptions
     SITES_BASE_DOMAIN: str = "gymflow.app"
     TRIAL_DAYS: int = 14
+
+    # Public URLs (OAuth redirects, links in messages, QR codes)
+    FRONTEND_URL: str = "http://localhost:3000"
+    PUBLIC_API_URL: str = "http://localhost:8000/api/v1"
+
+    # Encrypts OAuth tokens at rest. Any string; defaults to a key derived from SECRET_KEY.
+    TOKEN_ENCRYPTION_KEY: str | None = None
+
+    # Google (Search Console + Business Profile) OAuth web client
+    GOOGLE_CLIENT_ID: str | None = None
+    GOOGLE_CLIENT_SECRET: str | None = None
+    # Defaults to {PUBLIC_API_URL}/integrations/google/callback
+    GOOGLE_OAUTH_REDIRECT_URI: str | None = None
+
+    # WhatsApp inbound webhooks
+    WHATSAPP_VERIFY_TOKEN: str | None = None
+    WHATSAPP_APP_SECRET: str | None = None  # verifies X-Hub-Signature-256
+
+    # SEO crawler limits
+    SEO_MAX_PAGES: int = 25
+    SEO_REQUEST_TIMEOUT: float = 10.0
+    SEO_MAX_PAGE_BYTES: int = 2_000_000
+    SEO_USER_AGENT: str = "GymFlowSEOAudit/1.0 (+https://gymflow.app/bot)"
+
+    # Optional keyword-metrics provider. Without one, keyword ideas are labelled as suggestions.
+    KEYWORD_PROVIDER: str | None = None
+    KEYWORD_PROVIDER_API_KEY: str | None = None
+
+    # Public endpoint rate limits (requests per minute per IP)
+    PUBLIC_RATE_LIMIT_PER_MINUTE: int = 20
 
 
 @lru_cache

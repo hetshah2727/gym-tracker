@@ -1,6 +1,24 @@
-# GymFlow AI
+# GymFlow — AI-Powered Gym Revenue Growth Engine
 
-Multi-tenant gym management and business-automation SaaS. One platform, four services:
+**Discover more customers. Convert more enquiries. Recover more revenue. Grow your gym.**
+
+GymFlow helps independent gyms get found (website SEO, Google Maps, AI search), capture and convert
+enquiries (CRM, AI sales agent, trials), protect revenue (renewals, payment recovery) and decide what to
+do next (AI business analyst) — all on the gym's own records. See **[docs/GROWTH_ENGINE.md](docs/GROWTH_ENGINE.md)**
+for the architecture, feature audit, integration status and known gaps.
+
+| Growth module | What it does |
+|---|---|
+| **Website SEO** | SSRF-safe crawler that respects robots.txt, evidence-backed findings, audit history, approve-before-apply suggestions, local keyword ideas, landing pages, Search Console (OAuth) |
+| **Google Maps SEO** | Business Profile OAuth + audit against your approved profile, review replies (publish via API or copy), policy-safe review requests with QR, competitor comparison, post drafts |
+| **AI search visibility** | Transparent readiness checklist, entity consistency, JSON-LD generator/validator (no ratings), content studio, manually sampled visibility monitoring |
+| **AI sales agent** | Website chat + WhatsApp agent grounded in approved gym info; qualifies, books trials, escalates and hands over to staff |
+| **Lead CRM & pipeline** | One inbox for every channel, evidence-based attribution, de-duplication, explainable scoring, Kanban, follow-ups, campaigns |
+| **Trials** | Slot grid with capacity and trainer conflicts, calendar, staff-confirmed no-shows, conversion tracking |
+| **Revenue recovery** | Renewal milestones (30/15/7/0/after), outstanding & failed payments, recovery credited only from paid payments |
+| **AI business analyst** | Answers questions from deterministic KPIs, evidence-backed recommendations, actions that need confirmation, reports |
+
+The original platform services remain:
 
 | Module | What it does |
 |---|---|
@@ -25,9 +43,9 @@ python -m venv .venv && .venv/Scripts/activate      # macOS/Linux: source .venv/
 pip install -r requirements.txt
 cp .env.example .env                                 # set SECRET_KEY; everything else is optional
 alembic upgrade head
-python -m app.seed                                   # demo gym + platform admin
+python -m app.seed                                   # platform admin, small demo gym, IronCore Fitness demo
 uvicorn app.main:app --reload                        # http://localhost:8000/docs
-pytest                                               # 20 tests
+pytest                                               # 79 tests
 ```
 
 **Frontend** (Node 20+)
@@ -44,7 +62,9 @@ Demo logins (from `app.seed`):
 | Role | Email | Password |
 |---|---|---|
 | Platform admin | admin@gymflow.app | admin12345 |
-| Gym owner | owner@demo-gym.com | owner12345 |
+| Gym owner (small demo) | owner@demo-gym.com | owner12345 |
+| **IronCore Fitness owner** (full growth demo, Pro plan) | owner@ironcore.demo | ironcore123 |
+| IronCore manager / trainer | manager@ironcore.demo / trainer@ironcore.demo | ironcore123 |
 
 Or run everything with Docker: `docker compose up --build` (create `gymflow-backend/.env` first).
 
@@ -64,6 +84,7 @@ Roles: `platform_admin`, `gym_owner`, `gym_manager`, `trainer` (sees only assign
 |---|---|---|
 | `app.workers.expiry_worker` | daily | expires lapsed memberships; runs expiring / expired / birthday / inactive rules |
 | `app.workers.payment_worker` | daily | marks unpaid fees overdue; runs payment-due rules |
+| `app.workers.growth_worker` | daily | flags past trials for attendance review, syncs renewal/payment/lead recovery opportunities, saves the daily growth report |
 | `app.workers.notification_worker` | every minute | delivers queued WhatsApp / voice / SMS / email |
 
 Set `ENABLE_SCHEDULER=true` to run them inside the API (one instance only), or run `python -m app.workers.<name>` from cron or an n8n Cron node. Reminders are de-duplicated, so re-running a job never double-messages a member.
@@ -83,8 +104,10 @@ All integrations are optional. When one is not configured it runs in **dev mode*
 
 ## Known gaps / next steps
 
+See also [docs/GROWTH_ENGINE.md](docs/GROWTH_ENGINE.md#5-known-gaps).
+
 - Password reset only returns 202; email/WhatsApp delivery of a reset token isn't built yet.
-- Plan changes in *Settings → Subscription* switch the plan directly; Razorpay subscription billing and proration are TODOs.
+- Plan changes (*Plan & usage*) switch the plan directly and are logged; Razorpay subscription billing and proration are not implemented.
 - Affiliate conversions are recorded by the platform admin (from network reports); there's no automated report import.
 - Custom domains are stored and served via `GET /public/sites/by-domain`; DNS/TLS provisioning and host-based routing in the frontend aren't wired up.
 - The frontend stores the JWT in a JS-readable cookie so middleware can route by role. For production, consider an httpOnly cookie set by the API.

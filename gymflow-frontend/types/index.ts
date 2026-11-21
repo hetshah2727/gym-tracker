@@ -17,7 +17,7 @@ export type AutomationTrigger =
   | "birthday"
   | "inactive_member";
 export type DietPlanStatus = "draft" | "approved" | "assigned";
-export type LeadStatus = "new" | "contacted" | "converted" | "lost";
+export type LeadStatus = "new" | "contacted" | "interested" | "trial_booked" | "trial_attended" | "negotiation" | "converted" | "lost";
 
 export interface Page<T> {
   items: T[];
@@ -255,7 +255,7 @@ export interface Website {
   template: string;
   theme: { primaryColor?: string; font?: string; mode?: "light" | "dark" };
   blocks: SiteBlock[];
-  seo: { title?: string; description?: string };
+  seo: { title?: string; description?: string; json_ld?: unknown[] };
   custom_domain: string | null;
   is_published: boolean;
   published_at: string | null;
@@ -275,6 +275,11 @@ export interface PublicSite {
   };
   plans: { id: string; name: string; duration_days: number; price: number; description: string | null }[];
   trainers: { id: string; name: string; specialization: string | null; bio: string | null; photo_url: string | null }[];
+  landing_pages?: { slug: string; title: string }[];
+  page?: {
+    slug: string; service: string; area: string; seo_title: string; meta_description: string; h1: string; json_ld: unknown[];
+    content: { intro?: string; sections?: { heading: string; body: string }[]; faqs?: { q: string; a: string }[]; cta?: string };
+  };
 }
 
 export interface Lead {

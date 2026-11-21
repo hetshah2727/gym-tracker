@@ -116,3 +116,11 @@ def platform_stats(db: Session = Depends(get_db)):
             select(func.coalesce(func.sum(Payment.amount), 0))
             .where(Payment.status == PaymentStatus.PAID, Payment.paid_at >= month_start)) or 0),
     )
+
+
+@router.post("/demo/reset")
+def reset_demo(db: Session = Depends(get_db)):
+    """Delete and rebuild the IronCore Fitness demo tenant (only the gym flagged is_demo is touched)."""
+    from app.demo import ironcore
+
+    return ironcore.reset(db)

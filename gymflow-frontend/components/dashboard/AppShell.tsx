@@ -1,6 +1,6 @@
 "use client";
 
-import { Dumbbell, LogOut, Menu, X, type LucideIcon } from "lucide-react";
+import { ChevronDown, Dumbbell, Lock, LogOut, Menu, X, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
@@ -11,11 +11,13 @@ export interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
+  locked?: boolean;
 }
 
 export interface NavSection {
   title?: string;
   items: NavItem[];
+  collapsed?: boolean;
 }
 
 export function AppShell({
@@ -31,6 +33,7 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [closed, setClosed] = useState<Record<string, boolean>>({});
 
   const nav = (
     <nav className="flex h-full flex-col">
@@ -39,17 +42,27 @@ export function AppShell({
           <Dumbbell className="h-4 w-4" />
         </div>
         <div>
-          <p className="text-sm font-semibold leading-tight">GymFlow AI</p>
+          <p className="text-sm font-semibold leading-tight">GymFlow</p>
           <p className="text-xs text-muted">{subtitle}</p>
         </div>
       </div>
       <div className="flex-1 space-y-5 overflow-y-auto px-3 pb-4">
-        {sections.map((section, i) => (
-          <div key={i}>
-            {section.title && <p className="mb-1.5 px-2 text-[11px] font-medium uppercase tracking-wider text-muted/80">{section.title}</p>}
-            <ul className="space-y-0.5">
+        {sections.map((section, i) => {
+          const key = section.title ?? String(i);
+          const isClosed = closed[key] ?? (section.collapsed && !section.items.some((it) => pathname.startsWith(it.href.split("?")[0])));
+          return (
+          <div key={key}>
+            {section.title && (
+              <button onClick={() => setClosed((c) => ({ ...c, [key]: !isClosed }))} className="mb-1.5 flex w-full items-center justify-between px-2 text-[11px] font-medium uppercase tracking-wider text-muted/80 hover:text-fg">
+                {section.title}
+                <ChevronDown className={cn("h-3 w-3 transition", isClosed && "-rotate-90")} />
+              </button>
+            )}
+            {!isClosed && <ul className="space-y-0.5">
               {section.items.map((item) => {
-                const active = pathname === item.href || pathname.startsWith(item.href + "/");
+                const base = item.href.split("?")[0];
+                // Tab links (with ?query) share a page; only the plain link for that page is highlighted.
+                const active = !item.href.includes("?") && (pathname === base || pathname.startsWith(base + "/"));
                 return (
                   <li key={item.href}>
                     <Link
@@ -61,14 +74,16 @@ export function AppShell({
                       )}
                     >
                       <item.icon className="h-4 w-4" />
-                      {item.label}
+                      <span className="flex-1">{item.label}</span>
+                      {item.locked && <Lock className="h-3 w-3 text-muted/70" aria-label="Not in your plan" />}
                     </Link>
                   </li>
                 );
               })}
-            </ul>
+            </ul>}
           </div>
-        ))}
+          );
+        })}
       </div>
       <button onClick={logout} className="m-3 flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-muted hover:bg-surface-2 hover:text-fg">
         <LogOut className="h-4 w-4" /> Log out
@@ -93,7 +108,7 @@ export function AppShell({
           <button onClick={() => setOpen(!open)} className="rounded-md p-1.5 hover:bg-surface-2" aria-label="Toggle menu">
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
-          <span className="text-sm font-semibold">GymFlow AI</span>
+          <span className="text-sm font-semibold">GymFlow</span>
         </header>
         {banner}
         <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">{children}</main>

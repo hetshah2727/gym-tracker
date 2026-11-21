@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, Uuid
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.models.base import IdMixin, TenantMixin, TimestampMixin, enum_column, utcnow
@@ -35,6 +35,7 @@ class Notification(IdMixin, TimestampMixin, TenantMixin, Base):
     rule_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("automation_rules.id", ondelete="SET NULL")
     )
+    lead_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("leads.id", ondelete="SET NULL"), index=True)
     channel: Mapped[Channel] = mapped_column(enum_column(Channel))
     recipient: Mapped[str] = mapped_column(String(255))
     message: Mapped[str] = mapped_column(Text)
@@ -49,3 +50,8 @@ class Notification(IdMixin, TimestampMixin, TenantMixin, Base):
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     provider_message_id: Mapped[str | None] = mapped_column(String(200))
     error: Mapped[str | None] = mapped_column(Text)
+    # Approved WhatsApp template for business-initiated messages (outside the 24h session window).
+    template_name: Mapped[str | None] = mapped_column(String(120))
+    template_params: Mapped[list | None] = mapped_column(JSON)
+    # Provider delivery receipts (WhatsApp: sent / delivered / read / failed)
+    delivery_status: Mapped[str | None] = mapped_column(String(32))

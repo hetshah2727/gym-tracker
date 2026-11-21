@@ -10,7 +10,7 @@ from app.database.models import AutomationRule, Gym, GymSubscription, Membership
 from app.database.models.enums import AutomationTrigger, Channel, Role, SubscriptionStatus
 from app.modules.authentication.schemas import RegisterGymRequest, TokenResponse, UserOut
 from app.modules.common import unique_slug
-from app.modules.subscriptions.service import ensure_default_plans
+from app.modules.subscriptions.service import ensure_default_plans, log_event
 
 DEFAULT_MEMBERSHIP_PLANS = [
     ("Monthly", 30, 1500),
@@ -20,6 +20,10 @@ DEFAULT_MEMBERSHIP_PLANS = [
 ]
 
 DEFAULT_AUTOMATION_RULES = [
+    ("Expiry reminder - 30 days", AutomationTrigger.MEMBERSHIP_EXPIRING, 30, Channel.WHATSAPP,
+     "Hi {name}, your {gym} membership ends on {end_date}. Renew early to keep your plan running."),
+    ("Expiry reminder - 15 days", AutomationTrigger.MEMBERSHIP_EXPIRING, 15, Channel.WHATSAPP,
+     "Hi {name}, 15 days left on your {gym} membership (ends {end_date}). Reply to renew."),
     ("Expiry reminder - 7 days", AutomationTrigger.MEMBERSHIP_EXPIRING, 7, Channel.WHATSAPP,
      "Hi {name}, your {gym} membership expires on {end_date}. Renew now to keep your streak going!"),
     ("Expiry reminder - 1 day", AutomationTrigger.MEMBERSHIP_EXPIRING, 1, Channel.WHATSAPP,
@@ -67,6 +71,8 @@ def register_gym(db: Session, data: RegisterGymRequest) -> TokenResponse:
             gym_id=gym.id, plan_id=trial_plan.id, status=SubscriptionStatus.TRIALING,
             current_period_end=datetime.now(timezone.utc) + timedelta(days=settings.TRIAL_DAYS),
         ))
+        log_event(db, gym.id, "trial_started", to_plan=trial_plan.code, status="trialing",
+                  notes=f"{settings.TRIAL_DAYS}-day trial")
 
     db.commit()
     db.refresh(owner)

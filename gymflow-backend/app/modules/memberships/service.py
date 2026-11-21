@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 from app.database.models import Member, Membership, MembershipPlan, Payment
 from app.database.models.enums import MembershipStatus, MemberStatus, PaymentMethod, PaymentStatus
 from app.database.repositories.base import TenantRepository
-from app.integrations.n8n import client as n8n
+from app.modules.payments.service import mark_paid
+from app.services import events
 
 
 def assign_membership(
@@ -26,18 +27,17 @@ def assign_membership(
         end_date=start + timedelta(days=plan.duration_days - 1),
         amount=price, status=MembershipStatus.ACTIVE, auto_renew=auto_renew,
     )
-    TenantRepository(Payment, db).create(
+    payment = TenantRepository(Payment, db).create(
         member_id=member.id, membership_id=membership.id, amount=price, due_date=start,
-        status=PaymentStatus.PAID if paid else PaymentStatus.PENDING,
-        method=payment_method if paid else None,
-        paid_at=datetime.now(timezone.utc) if paid else None,
+        status=PaymentStatus.PENDING,
     )
     if member.status != MemberStatus.ACTIVE:
         TenantRepository(Member, db).update(member, {"status": MemberStatus.ACTIVE})
-    n8n.trigger("membership.created", {
-        "membership_id": str(membership.id), "member_id": str(member.id), "gym_id": str(member.gym_id),
-        "end_date": membership.end_date.isoformat(), "amount": price, "paid": paid,
-    })
+    events.emit(db, "membership.created", entity_type="membership", entity_id=membership.id,
+                payload={"member_id": member.id, "end_date": membership.end_date.isoformat(),
+                         "amount": price, "paid": paid})
+    if paid:
+        mark_paid(db, payment, payment_method or PaymentMethod.CASH)
     return membership
 
 
