@@ -342,9 +342,9 @@ def visibility_summary(db: Session) -> dict:
                       for k, v in providers.items()},
         "top_competitors": sorted(competitor_counts.items(), key=lambda kv: -kv[1])[:8],
         "sample_size": len(results),
-        "limitations": "Results are individual samples recorded by your team (manual research). AI answers vary "
-                       "by user, location, wording and time; these samples do not measure all answers and no "
-                       "provider API is connected for automatic monitoring.",
+        "limitations": "Each result is one sample: a live Google Search check by Gemini, or an answer your team "
+                       "recorded. AI answers vary by person, place, wording and time, so treat these as spot checks, "
+                       "not a ranking – they do not measure all answers.",
     }
 
 
@@ -352,3 +352,25 @@ def _result_out(r: AiVisibilityResult) -> dict:
     return {"id": str(r.id), "provider": r.provider, "method": r.method, "mentioned": r.mentioned,
             "position": r.position, "citation_urls": r.citation_urls, "competitors_mentioned": r.competitors_mentioned,
             "excerpt": r.excerpt, "observed_at": r.observed_at.isoformat()}
+
+
+def find_mentions(db, text: str) -> dict:
+    """Is the gym named in an AI answer, at which list position, and which tracked competitors appear?"""
+    import re
+
+    from app.database.models import Competitor, Gym
+    from app.core.tenant_context import get_current_gym_id
+
+    gym = db.get(Gym, get_current_gym_id())
+    low = text.lower()
+    name = gym.name.lower()
+    mentioned = name in low
+    position = None
+    if mentioned:
+        items = [ln for ln in text.splitlines() if re.match(r"^\s*(\d+[.)]|[-*•])\s+", ln)]
+        for i, ln in enumerate(items, start=1):
+            if name in ln.lower():
+                position = i
+                break
+    competitors = [c.name for c in TenantRepository(Competitor, db).list(limit=100) if c.name.lower() in low]
+    return {"mentioned": mentioned, "position": position, "competitors": competitors}

@@ -314,38 +314,38 @@ def todays_actions(db: Session) -> list[dict]:
                             "detail": detail})
 
     uncontacted = _count(db, Lead, Lead.status == LeadStatus.NEW, Lead.first_response_at.is_(None))
-    add("contact_new_leads", f"Contact {uncontacted} new enquir{'y' if uncontacted == 1 else 'ies'}", uncontacted,
-        "/dashboard/leads?status=new", "high", "No response has been recorded for these leads yet.")
+    add("contact_new_leads", f"Reply to {uncontacted} new enquir{'y' if uncontacted == 1 else 'ies'}", uncontacted,
+        "/dashboard/leads?status=new", "high", "Nobody has replied to them yet. Quick replies win more joins.")
     overdue = _count(db, FollowUpTask, FollowUpTask.status == TaskStatus.OPEN, FollowUpTask.due_at < now)
     add("overdue_tasks", f"Clear {overdue} overdue follow-up{'s' if overdue != 1 else ''}", overdue,
-        "/dashboard/follow-ups?due=overdue", "high", "Open tasks past their due time.")
+        "/dashboard/follow-ups?due=overdue", "high", "Calls and messages you planned that are now late.")
     review = _count(db, TrialBooking, TrialBooking.status == TrialStatus.PENDING_REVIEW)
-    add("trial_attendance", f"Record attendance for {review} past trial{'s' if review != 1 else ''}", review,
-        "/dashboard/trials?tab=no-shows", "high", "Mark attended or confirm the no-show; nothing is assumed.")
+    add("trial_attendance", f"Did {review} trial visitor{'s' if review != 1 else ''} show up? Mark it", review,
+        "/dashboard/trials?tab=no-shows", "high", "Tell GymFlow who came, so it can follow up with the rest.")
     noshow = _count(db, RecoveryOpportunity, RecoveryOpportunity.type == OpportunityType.TRIAL_NO_SHOW,
                     RecoveryOpportunity.status.in_(OPEN_OPPORTUNITY_STATUSES))
     add("no_shows", f"Follow up with {noshow} confirmed trial no-show{'s' if noshow != 1 else ''}", noshow,
-        "/dashboard/recovery?tab=opportunities&type=trial_no_show", "medium", "Staff-confirmed no-shows to rebook.")
+        "/dashboard/recovery?tab=opportunities&type=trial_no_show", "medium", "They booked a trial but didn't come. Offer a new time.")
     trials_today = _count(db, TrialBooking, TrialBooking.status == TrialStatus.BOOKED,
                           TrialBooking.starts_at >= start_of(today), TrialBooking.starts_at < start_of(today + timedelta(days=1)))
     add("trials_today", f"{trials_today} trial{'s' if trials_today != 1 else ''} booked today", trials_today,
         "/dashboard/trials?view=day", "medium", "Make sure a trainer is ready for each visitor.")
     expiring = _count(db, RecoveryOpportunity, RecoveryOpportunity.type == OpportunityType.UPCOMING_RENEWAL,
                       RecoveryOpportunity.status == OpportunityStatus.OPEN, RecoveryOpportunity.due_date <= today + timedelta(days=7))
-    add("renewals", f"Review {expiring} membership{'s' if expiring != 1 else ''} expiring soon", expiring,
-        "/dashboard/recovery?tab=renewals", "high", "Renewals due within about a week with no renewal recorded.")
+    add("renewals", f"{expiring} membership{'s' if expiring != 1 else ''} ending this week", expiring,
+        "/dashboard/money", "high", "Remind them now so they renew before the last day.")
     overdue_pay = _count(db, Payment, Payment.status.in_([PaymentStatus.OVERDUE, PaymentStatus.FAILED]))
-    add("payments", f"Chase {overdue_pay} overdue or failed payment{'s' if overdue_pay != 1 else ''}", overdue_pay,
-        "/dashboard/recovery?tab=outstanding", "high", "Unpaid fees past their due date or failed online attempts.")
+    add("payments", f"Collect {overdue_pay} late fee{'s' if overdue_pay != 1 else ''}", overdue_pay,
+        "/dashboard/money", "high", "Fees past their due date, or online payments that didn't go through.")
     audit = TenantRepository(SeoAudit, db).first(SeoAudit.status == AuditStatus.COMPLETED,
                                                 order_by=SeoAudit.finished_at.desc())
     if audit:
         crit = _count(db, SeoFinding, SeoFinding.audit_id == audit.id, SeoFinding.status == FindingStatus.OPEN,
                       SeoFinding.severity.in_([Severity.CRITICAL, Severity.HIGH]))
-        add("seo_issues", f"Resolve {crit} critical/high website SEO issue{'s' if crit != 1 else ''}", crit,
-            f"/dashboard/seo/audits/{audit.id}", "medium", f"From the audit of {audit.url}.")
+        add("seo_issues", f"Fix {crit} problem{'s' if crit != 1 else ''} that stop Google showing your website", crit,
+            f"/dashboard/seo/audits/{audit.id}", "medium", f"Found when GymFlow checked {audit.url}.")
     pending_reviews = _count(db, Review, Review.reply_status.in_([ReplyStatus.NONE, ReplyStatus.DRAFTED]))
     add("reviews", f"Reply to {pending_reviews} Google review{'s' if pending_reviews != 1 else ''}", pending_reviews,
-        "/dashboard/local/reviews", "low", "Reviews without a published reply.")
+        "/dashboard/local/reviews", "low", "Replying to reviews helps you rank higher on Google Maps.")
     order = {"high": 0, "medium": 1, "low": 2}
     return sorted(actions, key=lambda a: order[a["priority"]])

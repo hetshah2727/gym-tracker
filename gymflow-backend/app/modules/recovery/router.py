@@ -13,7 +13,8 @@ from app.database.models import (
     FollowUpTask, Gym, Lead, Member, Membership, MembershipPlan, Payment, RecoveryOpportunity, User,
 )
 from app.database.models.enums import (
-    OPEN_OPPORTUNITY_STATUSES, OpportunityStatus, OpportunityType, PaymentStatus, Priority, Role, TaskStatus,
+    OPEN_OPPORTUNITY_STATUSES, OpportunityStatus, OpportunityType, PaymentMethod, PaymentStatus, Priority, Role,
+    TaskStatus,
 )
 from app.database.repositories.base import TenantRepository
 from app.database.session import get_db
@@ -73,6 +74,11 @@ class PaymentIn(BaseModel):
     payment_id: uuid.UUID
 
 
+class MarkPaidIn(BaseModel):
+    method: PaymentMethod = PaymentMethod.CASH
+    reference: str | None = Field(None, max_length=100)
+
+
 class AssignIn(BaseModel):
     assigned_to_id: uuid.UUID | None
 
@@ -125,8 +131,7 @@ def detail(opp_id: uuid.UUID, db: Session = Depends(get_db), _=Depends(staff)):
     if member and membership:
         draft = service.renewal_message(gym, member, membership, float(opp.potential_revenue))
     elif member and payment:
-        draft = (f"Hi {member.full_name.split()[0]}, a payment of {gym.currency} {float(payment.amount):,.0f} is pending "
-                 f"at {gym.name}. Please pay at the desk or reply for a payment link.")
+        draft = service.payment_message(gym, member, payment)
     member_payments = TenantRepository(Payment, db).list(Payment.member_id == member.id,
                                                         Payment.status == PaymentStatus.PAID, limit=10) if member else []
     return {
@@ -172,6 +177,18 @@ def record_payment(opp_id: uuid.UUID, data: PaymentIn, db: Session = Depends(get
     service.close_with_payment(db, opp, payment, outcome="Recovered (payment linked by staff)", user=user)
     db.commit()
     return opp
+
+
+@router.get("/due")
+def due(db: Session = Depends(get_db), _=Depends(staff)):
+    """Plain "who owes money" list: overdue, ending this week, ending later."""
+    return service.due_list(db)
+
+
+@router.post("/opportunities/{opp_id}/mark-paid", response_model=OppOut)
+def mark_paid_now(opp_id: uuid.UUID, data: MarkPaidIn, db: Session = Depends(get_db), user: User = Depends(staff)):
+    opp = get_or_404(TenantRepository(RecoveryOpportunity, db), opp_id, "Opportunity")
+    return service.mark_paid_now(db, opp, user, data.method, data.reference)
 
 
 @router.post("/opportunities/{opp_id}/payment-link")

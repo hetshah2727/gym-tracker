@@ -18,24 +18,24 @@ export default function RevenuePage() {
   const { data, loading } = useApi<Rev>("/growth/revenue", { days, months: 12 });
   return (
     <FeatureGate feature="basic_reports">
-      <PageHeader title="Revenue analytics" description="Collected, recovered, outstanding and estimated revenue - kept strictly apart."
+      <PageHeader title="Reports" description="Money collected, brought back by reminders, still unpaid – and what's likely next month."
         actions={<Select className="w-40" value={days} onChange={(e) => setDays(e.target.value)} options={[{ value: "", label: "This month" }, { value: "30", label: "Last 30 days" }, { value: "90", label: "Last 90 days" }, { value: "365", label: "Last 12 months" }]} />} />
       {loading || !data ? <Loading /> : (() => {
         const s = data.summary;
         return <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <Kpi label="Collected" value={formatCurrency(s.collected)} hint={`${s.payments_collected} paid payments`} tone="brand" />
-            <Kpi label="Recovered" value={formatCurrency(s.recovered)} hint="Part of collected" />
-            <Kpi label="Outstanding" value={formatCurrency(s.outstanding)} hint={`${formatCurrency(s.overdue)} overdue`} tone={s.outstanding ? "danger" : undefined} />
-            <Kpi label="Potential (estimate)" value={formatCurrency(s.potential)} hint="Open opportunities" />
-            <Kpi label="Forecast, next 30 days" value={formatCurrency(s.forecast_next_30_days)} hint={`Renewal rate ${percent(s.forecast_basis.historical_renewal_rate.rate)}`} />
+            <Kpi label="Brought back by GymFlow" value={formatCurrency(s.recovered)} hint="Included in collected" />
+            <Kpi label="Unpaid fees" value={formatCurrency(s.outstanding)} hint={`${formatCurrency(s.overdue)} late`} tone={s.outstanding ? "danger" : undefined} />
+            <Kpi label="Could still collect" value={formatCurrency(s.potential)} hint="If everyone renews and pays" />
+            <Kpi label="Likely next 30 days" value={formatCurrency(s.forecast_next_30_days)} hint={`Renewal rate ${percent(s.forecast_basis.historical_renewal_rate.rate)}`} />
           </div>
           <Card title="Monthly revenue (12 months)" className="mt-4"><div className="p-4"><RevenueBars data={data.series} height={300} /></div></Card>
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <Card title="Collected from members, by the lead source that brought them"><div className="p-4">{Object.keys(data.by_lead_source).length ? <HBars money data={Object.entries(data.by_lead_source).filter(([, v]) => v > 0).map(([k, v]) => ({ label: humanize(k), value: v }))} valueLabel="Collected" /> : <EmptyState title="No converted leads with payments yet" />}</div></Card>
-            <Card title="Potential revenue by opportunity type (estimate)"><div className="p-4">{Object.keys(s.potential_by_type).length ? <HBars money data={Object.entries(s.potential_by_type).map(([k, v]) => ({ label: humanize(k), value: v }))} valueLabel="Potential" /> : <EmptyState title="No open opportunities" />}</div></Card>
+            <Card title="Money from members, by where they first heard of you"><div className="p-4">{Object.keys(data.by_lead_source).length ? <HBars money data={Object.entries(data.by_lead_source).filter(([, v]) => v > 0).map(([k, v]) => ({ label: humanize(k), value: v }))} valueLabel="Collected" /> : <EmptyState title="No paying members from enquiries yet" />}</div></Card>
+            <Card title="Still to collect, by type"><div className="p-4">{Object.keys(s.potential_by_type).length ? <HBars money data={Object.entries(s.potential_by_type).map(([k, v]) => ({ label: humanize(k), value: v }))} valueLabel="Potential" /> : <EmptyState title="Nothing left to collect" />}</div></Card>
           </div>
-          <Note className="mt-4">{Object.entries(s.definitions).map(([k, v]) => <span key={k} className="block"><strong className="text-fg">{humanize(k)}:</strong> {v}</span>)}<span className="block">Forecast basis: {formatCurrency(s.forecast_basis.unpaid_due_next_30_days)} unpaid due + {formatCurrency(s.forecast_basis.open_renewal_value)} open renewals × {percent(s.forecast_basis.historical_renewal_rate.rate)} ({s.forecast_basis.historical_renewal_rate.note}).</span></Note>
+          <Note className="mt-4 text-xs">{Object.entries(s.definitions).map(([k, v]) => <span key={k} className="block"><strong className="text-fg">{humanize(k)}:</strong> {v}</span>)}<span className="block">Forecast basis: {formatCurrency(s.forecast_basis.unpaid_due_next_30_days)} unpaid due + {formatCurrency(s.forecast_basis.open_renewal_value)} open renewals × {percent(s.forecast_basis.historical_renewal_rate.rate)} ({s.forecast_basis.historical_renewal_rate.note}).</span></Note>
         </>;
       })()}
     </FeatureGate>

@@ -1,118 +1,196 @@
 "use client";
 
-import { ChevronDown, Dumbbell, Lock, LogOut, Menu, X, type LucideIcon } from "lucide-react";
+import { LogOut, MessageCircle, Moon, Plus, Settings, Sun, X, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
-import { cn } from "@/lib/utils";
+import { useEffect, useState, type ReactNode } from "react";
+import { areaFor, tabMatches, type Area } from "@/components/dashboard/nav";
+import { cn, initials } from "@/lib/utils";
 import { logout } from "@/services/auth";
 
-export interface NavItem {
+export interface QuickAction {
   href: string;
   label: string;
   icon: LucideIcon;
-  locked?: boolean;
 }
 
-export interface NavSection {
-  title?: string;
-  items: NavItem[];
-  collapsed?: boolean;
+const SUPPORT_WHATSAPP = process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP;
+
+function useTheme(): [string, () => void] {
+  const [theme, setTheme] = useState("light");
+  useEffect(() => setTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light"), []);
+  const toggle = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("gf-theme", next); } catch { /* private mode */ }
+    setTheme(next);
+  };
+  return [theme, toggle];
+}
+
+function Logo({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2.5">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/icon.svg" alt="" className="h-9 w-9 shrink-0 rounded-xl" />
+      <div className="min-w-0">
+        <p className="truncate font-display text-[0.95rem] font-bold leading-tight">{title}</p>
+        {subtitle && <p className="truncate text-xs text-muted">{subtitle}</p>}
+      </div>
+    </div>
+  );
+}
+
+function Count({ n, className }: { n?: number; className?: string }) {
+  if (!n) return null;
+  return (
+    <span className={cn("num min-w-[1.25rem] rounded-full bg-brand px-1.5 text-center text-[11px] font-bold leading-5 text-brand-fg", className)}>
+      {n > 99 ? "99+" : n}
+    </span>
+  );
 }
 
 export function AppShell({
-  sections,
+  areas,
+  footerArea,
+  title,
   subtitle,
+  userName,
+  badges,
+  isHidden,
+  quickActions,
   banner,
   children,
 }: {
-  sections: NavSection[];
-  subtitle: string;
+  areas: Area[];
+  footerArea?: Area;
+  title: string;
+  subtitle?: string;
+  userName?: string | null;
+  badges?: Partial<Record<"money" | "enquiries", number>>;
+  /** Tabs whose feature is not in the plan and that should disappear rather than show a lock. */
+  isHidden?: (feature?: string) => boolean;
+  quickActions?: QuickAction[];
   banner?: ReactNode;
   children: ReactNode;
 }) {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
-  const [closed, setClosed] = useState<Record<string, boolean>>({});
+  const [theme, toggleTheme] = useTheme();
+  const [quickOpen, setQuickOpen] = useState(false);
+  const all = footerArea ? [...areas, footerArea] : areas;
+  const current = areaFor(pathname, all);
+  const tabs = (current?.tabs ?? []).filter((t) => !(t.hideIfLocked && isHidden?.(t.feature)));
 
-  const nav = (
-    <nav className="flex h-full flex-col">
-      <div className="flex items-center gap-2 px-4 py-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-brand-fg">
-          <Dumbbell className="h-4 w-4" />
-        </div>
-        <div>
-          <p className="text-sm font-semibold leading-tight">GymFlow</p>
-          <p className="text-xs text-muted">{subtitle}</p>
-        </div>
-      </div>
-      <div className="flex-1 space-y-5 overflow-y-auto px-3 pb-4">
-        {sections.map((section, i) => {
-          const key = section.title ?? String(i);
-          const isClosed = closed[key] ?? (section.collapsed && !section.items.some((it) => pathname.startsWith(it.href.split("?")[0])));
-          return (
-          <div key={key}>
-            {section.title && (
-              <button onClick={() => setClosed((c) => ({ ...c, [key]: !isClosed }))} className="mb-1.5 flex w-full items-center justify-between px-2 text-[11px] font-medium uppercase tracking-wider text-muted/80 hover:text-fg">
-                {section.title}
-                <ChevronDown className={cn("h-3 w-3 transition", isClosed && "-rotate-90")} />
-              </button>
-            )}
-            {!isClosed && <ul className="space-y-0.5">
-              {section.items.map((item) => {
-                const base = item.href.split("?")[0];
-                // Tab links (with ?query) share a page; only the plain link for that page is highlighted.
-                const active = !item.href.includes("?") && (pathname === base || pathname.startsWith(base + "/"));
-                return (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      onClick={() => setOpen(false)}
-                      className={cn(
-                        "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition",
-                        active ? "bg-brand/10 font-medium text-brand" : "text-muted hover:bg-surface-2 hover:text-fg",
-                      )}
-                    >
-                      <item.icon className="h-4 w-4" />
-                      <span className="flex-1">{item.label}</span>
-                      {item.locked && <Lock className="h-3 w-3 text-muted/70" aria-label="Not in your plan" />}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>}
-          </div>
-          );
-        })}
-      </div>
-      <button onClick={logout} className="m-3 flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-muted hover:bg-surface-2 hover:text-fg">
-        <LogOut className="h-4 w-4" /> Log out
-      </button>
-    </nav>
-  );
+  useEffect(() => setQuickOpen(false), [pathname]);
+
+  const navLink = (area: Area) => {
+    const active = current?.key === area.key;
+    const Icon = area.icon;
+    return (
+      <Link key={area.key} href={area.href} aria-current={active ? "page" : undefined}
+        className={cn("group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[0.95rem] transition",
+          active ? "bg-fg text-bg font-semibold" : "text-muted hover:bg-surface-2 hover:text-fg")}>
+        <Icon className="h-[18px] w-[18px]" strokeWidth={active ? 2.4 : 2} />
+        <span className="flex-1">{area.label}</span>
+        <Count n={area.badge ? badges?.[area.badge] : undefined} className={active ? "bg-bg text-fg" : undefined} />
+      </Link>
+    );
+  };
 
   return (
     <div className="min-h-screen">
-      <aside className="fixed inset-y-0 left-0 hidden w-60 border-r border-border bg-surface lg:block">{nav}</aside>
-
-      {open && (
-        <div className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setOpen(false)}>
-          <aside className="h-full w-64 border-r border-border bg-surface" onClick={(e) => e.stopPropagation()}>
-            {nav}
-          </aside>
+      {/* Desktop sidebar */}
+      <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col border-r border-border/70 bg-surface lg:flex">
+        <div className="px-4 py-5"><Logo title={title} subtitle={subtitle} /></div>
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3" aria-label="Main">{areas.map(navLink)}</nav>
+        <div className="space-y-1 border-t border-border/70 p-3">
+          {footerArea && navLink(footerArea)}
+          {SUPPORT_WHATSAPP && (
+            <a href={`https://wa.me/${SUPPORT_WHATSAPP}`} target="_blank" rel="noreferrer"
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[0.95rem] text-muted hover:bg-surface-2 hover:text-fg">
+              <MessageCircle className="h-[18px] w-[18px]" /> Help on WhatsApp
+            </a>
+          )}
+          <div className="mt-2 flex items-center gap-2 rounded-xl px-2 py-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-2 text-xs font-bold">{initials(userName || title)}</span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">{userName || "Account"}</span>
+            <button onClick={toggleTheme} className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-fg" aria-label="Switch light or dark mode">
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
+            <button onClick={logout} className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-fg" aria-label="Log out">
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
         </div>
-      )}
+      </aside>
 
-      <div className="lg:pl-60">
-        <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-border bg-bg/90 px-4 py-3 backdrop-blur lg:hidden">
-          <button onClick={() => setOpen(!open)} className="rounded-md p-1.5 hover:bg-surface-2" aria-label="Toggle menu">
-            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+      <div className="lg:pl-64">
+        {/* Mobile top bar */}
+        <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-border/70 bg-bg/90 px-4 py-3 backdrop-blur lg:hidden">
+          <div className="min-w-0 flex-1"><Logo title={title} /></div>
+          <button onClick={toggleTheme} className="rounded-lg p-2 text-muted" aria-label="Switch light or dark mode">
+            {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </button>
-          <span className="text-sm font-semibold">GymFlow</span>
+          {footerArea && <Link href={footerArea.href} className="rounded-lg p-2 text-muted" aria-label="Settings"><Settings className="h-5 w-5" /></Link>}
+          <button onClick={logout} className="rounded-lg p-2 text-muted" aria-label="Log out"><LogOut className="h-5 w-5" /></button>
         </header>
         {banner}
-        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+        <main className="mx-auto max-w-6xl px-4 pb-28 pt-5 sm:px-6 lg:px-10 lg:pb-12 lg:pt-8">
+          {tabs.length > 1 && (
+            <div className="scrollbar-none -mx-4 mb-6 flex gap-1 overflow-x-auto border-b border-border/70 px-4 sm:mx-0 sm:px-0" role="tablist" aria-label={current?.label}>
+              {tabs.map((t) => {
+                const active = tabMatches(pathname, t);
+                return (
+                  <Link key={t.href} href={t.href} role="tab" aria-selected={active}
+                    className={cn("-mb-px whitespace-nowrap border-b-2 px-3 pb-2.5 pt-1 text-sm transition",
+                      active ? "border-brand font-semibold text-fg" : "border-transparent text-muted hover:text-fg")}>
+                    {t.label}
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+          {children}
+        </main>
       </div>
+
+      {/* Mobile bottom tab bar */}
+      <nav className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-surface/95 backdrop-blur lg:hidden" aria-label="Main">
+        <div className="mx-auto flex max-w-lg">
+          {areas.slice(0, 5).map((area) => {
+            const active = current?.key === area.key;
+            const Icon = area.icon;
+            const n = area.badge ? badges?.[area.badge] : undefined;
+            return (
+              <Link key={area.key} href={area.href} aria-current={active ? "page" : undefined}
+                className={cn("relative flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px]", active ? "font-semibold text-brand" : "text-muted")}>
+                <Icon className="h-5 w-5" strokeWidth={active ? 2.4 : 2} />
+                {area.label}
+                {!!n && <span className="absolute right-[calc(50%-18px)] top-1.5 h-2 w-2 rounded-full bg-brand" aria-label={`${n} waiting`} />}
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+
+      {/* Quick add */}
+      {quickActions && quickActions.length > 0 && (
+        <div className="fixed bottom-20 right-4 z-40 flex flex-col items-end gap-2 lg:bottom-6 lg:right-6">
+          {quickOpen && (
+            <div className="card flex animate-rise flex-col p-1.5 shadow-soft">
+              {quickActions.map((q) => (
+                <Link key={q.href} href={q.href} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium hover:bg-surface-2">
+                  <q.icon className="h-4 w-4 text-brand" /> {q.label}
+                </Link>
+              ))}
+            </div>
+          )}
+          <button onClick={() => setQuickOpen((o) => !o)} aria-expanded={quickOpen} aria-label={quickOpen ? "Close quick actions" : "Quick actions"}
+            className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand text-brand-fg shadow-soft transition hover:bg-brand/90">
+            {quickOpen ? <X className="h-6 w-6" /> : <Plus className="h-6 w-6" />}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

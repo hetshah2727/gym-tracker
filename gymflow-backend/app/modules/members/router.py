@@ -1,13 +1,15 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import or_, select
+from datetime import date
+
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.permissions import GYM_STAFF, GYM_STAFF_AND_TRAINERS, tenant_user
 from app.core.security import hash_password
-from app.database.models import Member, Trainer, User
-from app.database.models.enums import MemberStatus, Role
+from app.database.models import Attendance, Member, Membership, MembershipPlan, Payment, Trainer, User
+from app.database.models.enums import MemberStatus, PaymentStatus, Role
 from app.database.repositories.base import TenantRepository
 from app.database.session import get_db
 from app.integrations.n8n import client as n8n
@@ -55,8 +57,39 @@ def list_members(
         like = f"%{search}%"
         filters.append(or_(Member.full_name.ilike(like), Member.phone.ilike(like), Member.email.ilike(like)))
     repo = TenantRepository(Member, db)
-    return Page(items=repo.list(*filters, offset=offset, limit=limit), total=repo.count(*filters),
-                offset=offset, limit=limit)
+    members = repo.list(*filters, offset=offset, limit=limit)
+    return Page(items=_with_status(db, members), total=repo.count(*filters), offset=offset, limit=limit)
+
+
+def _with_status(db: Session, members: list[Member]) -> list[MemberOut]:
+    """Attach current plan, days left, unpaid dues and last visit (one query each, not per member)."""
+    ids = [m.id for m in members]
+    if not ids:
+        return []
+    latest: dict = {}
+    for ms in TenantRepository(Membership, db).list(Membership.member_id.in_(ids), limit=len(ids) * 20,
+                                                     order_by=Membership.end_date):
+        latest[ms.member_id] = ms  # ordered by end date, so the last one wins
+    plans = {p.id: p.name for p in TenantRepository(MembershipPlan, db).list(limit=500)}
+    dues: dict = {}
+    for p in TenantRepository(Payment, db).list(Payment.member_id.in_(ids), Payment.status.in_(
+            [PaymentStatus.PENDING, PaymentStatus.OVERDUE, PaymentStatus.FAILED]), limit=len(ids) * 20):
+        dues[p.member_id] = dues.get(p.member_id, 0) + float(p.amount)
+    visits = dict(db.execute(select(Attendance.member_id, func.max(Attendance.check_in_at))
+                             .where(Attendance.member_id.in_(ids)).group_by(Attendance.member_id)).all())
+    today = date.today()
+    out = []
+    for m in members:
+        row = MemberOut.model_validate(m)
+        ms = latest.get(m.id)
+        if ms:
+            row.plan_name = plans.get(ms.plan_id)
+            row.end_date = ms.end_date
+            row.days_left = (ms.end_date - today).days
+        row.due_amount = round(dues.get(m.id, 0), 2)
+        row.last_visit_at = visits.get(m.id)
+        out.append(row)
+    return out
 
 
 @router.post("", response_model=MemberOut, status_code=status.HTTP_201_CREATED)

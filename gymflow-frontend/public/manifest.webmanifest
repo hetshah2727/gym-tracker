@@ -1,0 +1,9 @@
+{
+  "name": "GymFlow",
+  "short_name": "GymFlow",
+  "start_url": "/dashboard/overview",
+  "display": "standalone",
+  "background_color": "#F7F6F3",
+  "theme_color": "#D9480F",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

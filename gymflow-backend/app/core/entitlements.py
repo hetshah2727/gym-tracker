@@ -21,28 +21,28 @@ from app.database.session import get_db
 # key -> (label, plan tier that first includes it)
 FEATURES: dict[str, tuple[str, str]] = {
     # Starter
-    "members": ("Member, membership & payment management", "starter"),
-    "lead_crm": ("Lead CRM & sales pipeline", "starter"),
+    "members": ("Members, plans, payments & check-in", "starter"),
+    "lead_crm": ("Enquiry inbox & follow-ups", "starter"),
     "trials": ("Trial booking", "starter"),
-    "seo_audit": ("Website SEO audit", "starter"),
+    "seo_audit": ("Website health check", "starter"),
     "basic_reports": ("Basic reports", "starter"),
-    "website_builder": ("Website & landing page builder", "starter"),
-    "automation": ("Reminder rules", "starter"),
-    "affiliate": ("Affiliate store (legacy)", "starter"),
+    "website_builder": ("Gym website builder", "starter"),
+    "automation": ("Automatic reminders", "starter"),
+    "affiliate": ("Supplement store add-on", "starter"),
     # Growth
-    "ai_sales_agent": ("AI sales agent", "growth"),
+    "ai_sales_agent": ("AI receptionist for enquiries", "growth"),
     "whatsapp_workflows": ("WhatsApp workflows", "growth"),
-    "renewal_automation": ("Renewal automation", "growth"),
-    "local_seo": ("Google Maps & local SEO tools", "growth"),
-    "recovery_center": ("Revenue recovery center", "growth"),
-    "business_analyst": ("AI business analyst", "growth"),
-    "ai_search_readiness": ("AI search readiness audit", "growth"),
-    "ai_diet": ("AI nutrition (optional module)", "growth"),
+    "renewal_automation": ("Automatic renewal follow-ups", "growth"),
+    "local_seo": ("Google Maps listing & reviews", "growth"),
+    "recovery_center": ("Late fee & renewal collection", "growth"),
+    "business_analyst": ("Ask GymFlow (AI answers about your gym)", "growth"),
+    "ai_search_readiness": ("ChatGPT & AI search checklist", "growth"),
+    "ai_diet": ("AI diet plans", "growth"),
     # Pro
-    "advanced_seo": ("Advanced SEO reports & Search Console", "pro"),
-    "ai_search_monitoring": ("AI search visibility monitoring", "pro"),
+    "advanced_seo": ("Google search reports", "pro"),
+    "ai_search_monitoring": ("AI search tracking", "pro"),
     "advanced_analytics": ("Advanced analytics", "pro"),
-    "voice_calls": ("AI voice calls (deprioritised)", "pro"),
+    "voice_calls": ("AI voice calls (coming soon)", "pro"),
 }
 
 TIER_ORDER = ["starter", "growth", "pro"]

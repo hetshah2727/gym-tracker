@@ -10,7 +10,14 @@ import { formatCurrency, formatDateTime, humanize } from "@/lib/utils";
 import { post } from "@/services/api";
 
 export const STAGES = ["new", "contacted", "interested", "trial_booked", "trial_attended", "negotiation", "converted", "lost"] as const;
-export const stageLabel = (s: string) => (s === "converted" ? "Joined" : humanize(s));
+const STAGE_LABELS: Record<string, string> = {
+  new: "Needs reply", contacted: "Talking", interested: "Interested", trial_booked: "Trial booked",
+  trial_attended: "Came for trial", negotiation: "Deciding", converted: "Joined", lost: "Not joining",
+};
+export const stageLabel = (s: string) => STAGE_LABELS[s] ?? humanize(s);
+/** Lead score shown as a temperature, which owners read faster than a number. */
+export const heat = (score: number) => (score >= 60 ? { label: "Hot", tone: "bg-danger/10 text-danger" }
+  : score >= 30 ? { label: "Warm", tone: "bg-warning/10 text-warning" } : { label: "Cold", tone: "bg-info/10 text-info" });
 
 export interface LeadRow {
   id: string; name: string; phone: string | null; email: string | null; source: string; status: string; priority: string;

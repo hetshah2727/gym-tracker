@@ -142,3 +142,64 @@ def test_recovery_requires_growth_plan(client, owner):
     assert ent["features"]["recovery_center"] is False and ent["features"]["lead_crm"] is True
     history = client.get(f"{API}/subscriptions/history", headers=owner).json()
     assert [h["event"] for h in history][:2] == ["plan_changed", "trial_started"]
+
+
+def test_due_list_and_one_tap_mark_paid_for_renewal_and_unpaid_fee(client, owner):
+    # Renewal ending in 5 days + an unpaid fee for a second member
+    member, plan, ms = _member_with_membership(client, owner, start_days_ago=24)
+    other, _, _ = _member_with_membership(client, owner, start_days_ago=40, paid=False, phone="9123456781")
+    _sync(client, owner)
+    due = client.get(f"{API}/recovery/due", headers=owner).json()
+    kinds = {i["name"]: i for i in due["items"]}
+    assert due["count"] >= 2 and due["buckets"]["this_week"]["count"] >= 1 and due["buckets"]["overdue"]["count"] >= 1
+    renewal = next(i for i in due["items"] if i["member_id"] == member["id"])
+    unpaid = next(i for i in due["items"] if i["member_id"] == other["id"] and i["kind"] == "unpaid")
+    assert renewal["kind"] == "renewal" and renewal["phone"] and "membership" in renewal["message"] and kinds
+
+    # One tap on a renewal creates the renewal membership, paid, and credits it once
+    r = client.post(f"{API}/recovery/opportunities/{renewal['id']}/mark-paid", headers=owner, json={"method": "upi"})
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "won" and r.json()["recovered_revenue"] == plan["price"]
+    # One tap on an unpaid fee marks that payment paid
+    r = client.post(f"{API}/recovery/opportunities/{unpaid['id']}/mark-paid", headers=owner, json={"method": "cash"})
+    assert r.status_code == 200 and r.json()["status"] == "won"
+    # Closed items can't be paid twice
+    assert client.post(f"{API}/recovery/opportunities/{unpaid['id']}/mark-paid", headers=owner,
+                       json={"method": "cash"}).status_code == 409
+    remaining = {i["id"] for i in client.get(f"{API}/recovery/due", headers=owner).json()["items"]}
+    assert renewal["id"] not in remaining and unpaid["id"] not in remaining
+
+    dash = client.get(f"{API}/growth/dashboard", headers=owner).json()
+    assert dash["owner_name"] and "price_monthly" in dash["subscription"] and len(dash["setup"]) == 6
+    assert "due_total" in dash["money"]
+
+    members = client.get(f"{API}/members", headers=owner).json()["items"]
+    renewed = next(m for m in members if m["id"] == member["id"])
+    assert renewed["plan_name"] and renewed["days_left"] > 5 and renewed["due_amount"] == 0
+
+
+def test_demo_login_only_when_enabled(client, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "DEMO_LOGIN_ENABLED", False)
+    assert client.post(f"{API}/auth/demo-login").status_code == 404
+    monkeypatch.setattr(settings, "DEMO_LOGIN_ENABLED", True)
+    assert client.post(f"{API}/auth/demo-login").status_code == 404  # no demo gym seeded in tests
+
+
+def test_paid_renewal_payment_link_creates_renewal_once(client, owner):
+    member, plan, ms = _member_with_membership(client, owner, start_days_ago=24)
+    _sync(client, owner)
+    opp = next(i for i in client.get(f"{API}/recovery/due", headers=owner).json()["items"] if i["member_id"] == member["id"])
+    assert opp["can_pay_online"]
+    body = {"event": "payment_link.paid", "payload": {
+        "payment_link": {"entity": {"reference_id": "rnw_" + opp["id"].replace("-", "")}},
+        "payment": {"entity": {"id": "pay_link_1"}}}}
+    raw, sig = _signed(body)
+    headers = {"X-Razorpay-Signature": sig, "X-Razorpay-Event-Id": "evt_link_1", "Content-Type": "application/json"}
+    assert client.post(f"{API}/payments/webhooks/razorpay", content=raw, headers=headers).json()["status"] == "ok"
+    assert client.post(f"{API}/payments/webhooks/razorpay", content=raw, headers=headers).json()["status"] == "duplicate"
+    won = _opps(client, owner, tab="history")["items"][0]
+    assert won["status"] == "won" and won["recovered_revenue"] == plan["price"]
+    rev = client.get(f"{API}/growth/revenue", headers=owner).json()["summary"]
+    assert rev["recovered"] == plan["price"]

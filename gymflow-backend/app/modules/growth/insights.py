@@ -104,24 +104,24 @@ def recommendations(db: Session, today: date | None = None) -> list[dict]:
         missing_meta = TenantRepository(SeoFinding, db).count(SeoFinding.audit_id == audit.id,
                                                               SeoFinding.code == "missing_meta_description")
         if missing_meta:
-            out.append(_rec("missing_meta", f"Your website audit found {missing_meta} page(s) with no meta description",
-                            "Generate suggestions and update those pages.", "medium",
+            out.append(_rec("missing_meta", f"{missing_meta} page(s) on your website have no Google description",
+                            "GymFlow can write them for you – you just approve and paste them in.", "medium",
                             [{"label": "Pages", "value": missing_meta}, {"label": "Audit score", "value": audit.score}],
                             f"/dashboard/seo/audits/{audit.id}", "seo"))
     else:
-        out.append(_rec("no_audit", "No website SEO audit yet", "Run an audit to find technical and on-page issues.",
+        out.append(_rec("no_audit", "Check how your website looks to Google", "A free 2-minute check finds what stops people finding you.",
                         "low", [], "/dashboard/seo", "seo"))
 
     gbp = TenantRepository(IntegrationConnection, db).first(IntegrationConnection.provider == "google_business_profile")
     if gbp is None or gbp.status != ConnectionStatus.CONNECTED:
-        out.append(_rec("connect_gbp", "Google Business Profile is not connected",
-                        "Connect it to audit your profile and reply to reviews from GymFlow.", "low",
+        out.append(_rec("connect_gbp", "Connect your Google Maps listing",
+                        "Most new members find a gym on Google Maps. Connect it to fix your listing and answer reviews.", "low",
                         [{"label": "Status", "value": gbp.status.value if gbp else "not_connected"}],
                         "/dashboard/integrations", "local"))
     ready = TenantRepository(AiReadinessCheck, db).first(order_by=AiReadinessCheck.created_at.desc())
     if ready and ready.content_gaps:
-        out.append(_rec("ai_readiness", f"{len(ready.content_gaps)} gaps in your AI-search readiness checklist",
-                        "Clear, consistent information helps assistants describe your gym correctly.", "low",
+        out.append(_rec("ai_readiness", f"Fill {len(ready.content_gaps)} gaps so ChatGPT and Google can recommend you",
+                        "People now ask AI 'best gym near me'. Clear timings, prices and photos help it pick you.", "low",
                         [{"label": "Checklist score", "value": ready.score}], "/dashboard/ai-search", "ai_search"))
     order = {"high": 0, "medium": 1, "low": 2}
     return sorted(out, key=lambda r: order[r["priority"]])

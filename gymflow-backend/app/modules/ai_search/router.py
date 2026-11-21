@@ -255,6 +255,31 @@ def delete_query(query_id: uuid.UUID, db: Session = Depends(get_db), _=Depends(m
     repo.delete(get_or_404(repo, query_id, "Query"))
 
 
+@router.post("/visibility/queries/{query_id}/check", status_code=status.HTTP_201_CREATED)
+def check_query(query_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(monitor)):
+    """Ask Gemini with live Google Search, and record whether this gym is named and which sources were used."""
+    from app.integrations.ai import gemini
+
+    if not gemini.is_configured():
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Live search checks aren't switched on yet")
+    q = get_or_404(TenantRepository(AiVisibilityQuery, db), query_id, "Query")
+    entitlements.enforce_limit(db, "ai_messages")
+    try:
+        answer = gemini.search(q.question, system="You are a helpful local assistant. Recommend specific, real "
+                               "businesses by name as a numbered list, using current web results.")
+    except gemini.AIError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+    entitlements.record_usage(db, "ai_messages")
+    found = service.find_mentions(db, answer.text)
+    r = TenantRepository(AiVisibilityResult, db).create(
+        query_id=q.id, provider="gemini", method="live_search", recorded_by_id=user.id,
+        mentioned=found["mentioned"], position=found["position"],
+        citation_urls=[s["url"] for s in answer.sources][:20], competitors_mentioned=found["competitors"],
+        excerpt=answer.text[:4000], observed_at=datetime.now(timezone.utc))
+    return {"id": str(r.id), "method": r.method, "mentioned": r.mentioned, "position": r.position,
+            "competitors_mentioned": r.competitors_mentioned, "sources": answer.sources, "excerpt": r.excerpt}
+
+
 @router.post("/visibility/queries/{query_id}/results", status_code=status.HTTP_201_CREATED)
 def add_result(query_id: uuid.UUID, data: ResultIn, db: Session = Depends(get_db), user: User = Depends(monitor)):
     get_or_404(TenantRepository(AiVisibilityQuery, db), query_id, "Query")

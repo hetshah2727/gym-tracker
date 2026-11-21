@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.tenant_context import get_current_gym_id
 from app.database.models import Gym, GymProfile, MembershipPlan, Trainer
 from app.database.repositories.base import TenantRepository
-from app.integrations.ai import claude
+from app.integrations.ai import llm
 
 # Phrases we never let through silently: superlatives we can't prove, guarantees, health/medical claims.
 CLAIM_PATTERNS = [
@@ -103,12 +103,18 @@ Rules (strict):
 The owner reviews everything before it is published."""
 
 
-def _ai_or_template(schema: type[BaseModel], prompt: str, template_fn) -> tuple[BaseModel, str]:
-    if claude.is_configured():
+def _ai_or_template(schema: type[BaseModel], prompt: str, template_fn, *, post: bool = False) -> tuple[BaseModel, str]:
+    """AI draft (Gemini for posts, the main text model otherwise), or the deterministic template."""
+    from app.integrations.ai import gemini
+
+    if llm.is_configured() or (post and gemini.is_configured()):
         try:
-            result, _usage = claude.parse(SYSTEM, prompt, schema, effort="low")
+            if post:
+                result, _usage, _engine = llm.parse_post(SYSTEM, prompt, schema)
+            else:
+                result, _usage = llm.parse(SYSTEM, prompt, schema, effort="low")
             return result, "ai"
-        except claude.AIError:
+        except llm.AIError:
             pass  # fall back to the deterministic template
     return template_fn(), "template"
 
@@ -256,7 +262,7 @@ def landing_page(db: Session, service: str, area: str) -> tuple[LandingDraft, st
         if f.address:
             sections.append(LandingSection(heading=f"Getting here from {area}",
                                            body=f"We are at {f.address}." + (f" Call {f.phone}." if f.phone else "")))
-        faqs = [FaqItem(q=x["q"], a=x["a"]) for x in generate_faqs(db)[0][:4]] if not claude.is_configured() else []
+        faqs = [FaqItem(q=x["q"], a=x["a"]) for x in generate_faqs(db)[0][:4]] if not llm.is_configured() else []
         return LandingDraft(
             seo_title=_clip(f"{service} in {area}, {city} | {f.gym}" if city else f"{service} in {area} | {f.gym}", 60),
             meta_description=_clip(f"{service} near {area}{', ' + city if city else ''} at {f.gym}. "
@@ -325,7 +331,7 @@ def profile_post(db: Session, kind: str, details: str | None) -> tuple[dict, str
         return PostDraft(text=_clip(base + tail, 1500), call_to_action="BOOK" if f.trial.get("enabled") else "CALL")
 
     prompt = f"{f.as_prompt()}\n\nWrite a Google Business Profile '{kind}' post. Details from the owner: {details or '-'}"
-    result, by = _ai_or_template(PostDraft, prompt, template)
+    result, by = _ai_or_template(PostDraft, prompt, template, post=True)
     return {"text": result.text, "call_to_action": result.call_to_action}, by, check_claims(result.text)
 
 

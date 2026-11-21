@@ -13,6 +13,8 @@ interface Item { key: string; name: string; state: string; connection?: string; 
 interface GoogleStatus { provider: string; configured: boolean; status: string; account?: string | null; choices: { id: string; label: string; address?: string }[]; last_error?: string | null }
 type Tab = "health" | "google" | "whatsapp";
 const STATE_TONE: Record<string, string> = { live_tested: "paid", configured_not_tested: "approved", simulation: "pending", not_configured: "draft", not_implemented: "cancelled" };
+// Owner-facing words for each integration state (the technical legend stays for platform admins).
+const STATE_LABEL: Record<string, string> = { live_tested: "Working", configured_not_tested: "Set up", simulation: "Practice mode – nothing is sent", not_configured: "Not connected", not_implemented: "Coming soon" };
 const CATEGORIES = ["trial_confirmation", "trial_reminder", "sales_follow_up", "renewal_reminder", "payment_reminder", "lead_acknowledgement"];
 
 function GoogleCard({ provider, label, owner }: { provider: string; label: string; owner: boolean }) {
@@ -24,7 +26,7 @@ function GoogleCard({ provider, label, owner }: { provider: string; label: strin
   return (
     <Card title={label} actions={s && <Badge value={s.status === "connected" ? "active" : s.status === "pending" ? "pending" : s.status === "expired" ? "expired" : "draft"} />}>
       {!s ? <Loading /> : <div className="space-y-3 p-4 text-sm">
-        {!s.configured && <Note tone="warning">Google OAuth credentials are not configured on this server, so this can&apos;t be connected yet (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).</Note>}
+        {!s.configured && <Note tone="warning">Google connection isn&apos;t switched on for your account yet. Message GymFlow support and we&apos;ll set it up for you.</Note>}
         {s.status === "connected" && <p>Connected to <strong>{s.account}</strong></p>}
         {s.last_error && <p className="text-xs text-danger">{s.last_error}</p>}
         {s.status === "pending" && <div className="flex gap-2"><Select value={choice} onChange={(e) => setChoice(e.target.value)} placeholder="Choose property / location" options={s.choices.map((c) => ({ value: c.id, label: `${c.label}${c.address ? ` – ${c.address}` : ""}` }))} />
@@ -61,15 +63,15 @@ export default function IntegrationsPage() {
 
   return (
     <>
-      <PageHeader title="Integrations" description="Each integration shows exactly what state it is in. Nothing is reported as live unless it has really connected." />
-      <Tabs<Tab> value={tab} onChange={setTab} tabs={[{ value: "health", label: "Integration health" }, { value: "google", label: "Google" }, { value: "whatsapp", label: "WhatsApp" }]} />
+      <PageHeader title="Connections" description="Link WhatsApp and Google so GymFlow can send reminders and look after your Google listing for you." />
+      <Tabs<Tab> value={tab} onChange={setTab} tabs={[{ value: "health", label: "Overview" }, { value: "whatsapp", label: "WhatsApp" }, { value: "google", label: "Google" }]} />
       {tab === "health" && (health.loading || !health.data ? <Loading /> : <Card>
         <ul className="divide-y divide-border/60">{health.data.integrations.map((i) => (
           <li key={i.key} className="flex flex-col gap-1 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
             <div><p className="font-medium">{i.name}</p><p className="text-xs text-muted">{i.detail ?? (i.account ? `Account: ${i.account}` : "")}{i.last_sync_at && ` · last sync ${formatDateTime(i.last_sync_at)}`}</p>{i.last_error && <p className="text-xs text-danger">{i.last_error}</p>}</div>
-            <span title={health.data?.legend[i.state]}><Badge value={STATE_TONE[i.state]} className="!normal-case" /> <span className="text-xs text-muted">{humanize(i.state)}</span></span>
+            <span title={health.data?.legend[i.state]} className="text-xs font-semibold"><Badge value={STATE_TONE[i.state]} className="mr-1 !normal-case" />{STATE_LABEL[i.state] ?? humanize(i.state)}</span>
           </li>))}</ul>
-        <div className="border-t border-border px-4 py-3 text-xs text-muted">{Object.entries(health.data.legend).map(([k, v]) => <span key={k} className="mr-4 inline-block"><strong>{humanize(k)}:</strong> {v}</span>)}</div>
+
       </Card>)}
       {tab === "google" && <div className="grid gap-4 lg:grid-cols-2">
         <GoogleCard provider="google_business_profile" label="Google Business Profile" owner={owner} />
@@ -78,16 +80,17 @@ export default function IntegrationsPage() {
       {tab === "whatsapp" && wa && <div className="grid gap-4 lg:grid-cols-2">
         <Card title="WhatsApp Cloud API">
           <div className="space-y-3 p-4 text-sm">
-            <p><Badge value={STATE_TONE[wa.state]} className="!normal-case" /> {humanize(wa.state)} - {wa.detail}</p>
-            <p className="text-xs text-muted">Webhook URL for Meta: <code>{wa.inbound_webhook}</code> {wa.webhook_ready ? "(verify token & app secret set)" : "(server needs WHATSAPP_VERIFY_TOKEN and WHATSAPP_APP_SECRET)"}</p>
+            <p><Badge value={STATE_TONE[wa.state]} className="!normal-case" /> {STATE_LABEL[wa.state] ?? humanize(wa.state)}</p>
+            <Note>Until WhatsApp is connected, the Remind buttons open WhatsApp on your own phone with the message ready – nothing to set up.</Note>
+            <details className="text-xs text-muted"><summary className="cursor-pointer">For your developer</summary><p className="mt-1">Webhook URL for Meta: <code className="break-all">{wa.inbound_webhook}</code> {wa.webhook_ready ? "(ready)" : "(the server still needs its webhook secrets)"}</p></details>
             <form className="grid gap-2 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault(); run("wa", () => put("/integrations/whatsapp", { phone_number_id: phoneId, display_number: display || undefined }), "WhatsApp number linked").then(health.reload); }}>
-              <Field label="Phone number ID (from Meta)"><Input value={phoneId} onChange={(e) => setPhoneId(e.target.value)} placeholder={wa.connection === "connected" ? "linked - enter to change" : "1234567890"} inputMode="numeric" /></Field>
+              <Field label="WhatsApp Business phone number ID"><Input value={phoneId} onChange={(e) => setPhoneId(e.target.value)} placeholder={wa.connection === "connected" ? "linked - enter to change" : "1234567890"} inputMode="numeric" /></Field>
               <Field label="Display number"><Input value={display} onChange={(e) => setDisplay(e.target.value)} placeholder="+91 98240 12345" /></Field>
               <div className="sm:col-span-2"><Button type="submit" disabled={!owner || !/^\d{5,}$/.test(phoneId)} loading={busy === "wa"}>Link number</Button></div>
             </form>
           </div>
         </Card>
-        <Card title="Approved message templates">
+        <Card title="Message templates (advanced)">
           <form className="space-y-2 p-4" onSubmit={(e) => { e.preventDefault(); run("tpl", () => put("/integrations/whatsapp/templates", { templates: Object.fromEntries(Object.entries(templates).filter(([, v]) => v)) }), "Templates saved").then(health.reload); }}>
             <p className="text-xs text-muted">Messages to people who haven&apos;t written in the last 24 hours need a Meta-approved template and their opt-in. Without a template, GymFlow creates a task with the drafted text for staff instead of sending.</p>
             {CATEGORIES.map((c) => <Field key={c} label={humanize(c)}><Input value={templates[c] ?? ""} onChange={(e) => setTemplates({ ...templates, [c]: e.target.value })} placeholder="approved template name" /></Field>)}

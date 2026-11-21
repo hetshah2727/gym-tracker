@@ -1,7 +1,8 @@
 "use client";
 
 import { Plus, Wallet } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useState, type FormEvent } from "react";
 import { PaymentsTable } from "@/components/payments/PaymentsTable";
 import { Button, Card, EmptyState, ErrorNote, Field, Input, Loading, Modal, PageHeader, Select, Tabs } from "@/components/shared/ui";
 import { useApi } from "@/hooks/useApi";
@@ -17,21 +18,23 @@ export default function PaymentsPage() {
   const { data, loading, error, reload } = useApi<Page<Payment>>("/payments", { status: view, limit: 100 });
   const { members, names } = useMemberNames();
   const [recording, setRecording] = useState(false);
+  const params = useSearchParams();
+  useEffect(() => { if (params.get("new") === "1") setRecording(true); }, [params]);
   const total = data?.items.reduce((s, p) => s + Number(p.amount), 0) ?? 0;
 
   return (
     <>
       <PageHeader
         title="Payments"
-        description="Fee records, dues and online payments."
-        actions={<Button onClick={() => setRecording(true)}><Plus className="h-4 w-4" /> Record payment</Button>}
+        description="Every fee – paid, due and late."
+        actions={<Button onClick={() => setRecording(true)}><Plus className="h-4 w-4" /> Take payment</Button>}
       />
       <Tabs<View>
         value={view}
         onChange={setView}
         tabs={[
-          { value: "pending", label: "Pending" },
-          { value: "overdue", label: "Overdue" },
+          { value: "pending", label: "Due" },
+          { value: "overdue", label: "Late" },
           { value: "paid", label: "Paid" },
           { value: "", label: "All" },
         ]}
@@ -46,7 +49,7 @@ export default function PaymentsPage() {
           <PaymentsTable payments={data.items} names={names} onChanged={reload} />
         )}
       </Card>
-      <Modal open={recording} onClose={() => setRecording(false)} title="Record payment">
+      <Modal open={recording} onClose={() => setRecording(false)} title="Take a payment">
         {recording && <RecordPaymentForm members={members} onSaved={() => { setRecording(false); reload(); }} />}
       </Modal>
     </>

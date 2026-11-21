@@ -2,80 +2,103 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Design tokens (RGB triplets so Tailwind can apply opacity). Dark-first. */
+/* Design tokens (RGB triplets so Tailwind can apply opacity). Light-first: gyms are bright and demos run on
+   projectors. Colour carries meaning: brand = actions, money = money in, warning = due soon, danger = overdue. */
 :root {
-  --bg: 7 9 14;
-  --surface: 13 17 26;
-  --surface-2: 20 26 38;
-  --border: 36 44 60;
-  --fg: 236 240 246;
-  --muted: 145 155 175;
-  --brand: 34 197 94;
-  --brand-fg: 4 20 10;
-  --danger: 239 68 68;
-  --warning: 245 158 11;
-  /* Chart series (validated: lightness band, chroma, CVD and contrast vs surface) */
-  --chart-1: 22 163 74;
-  --chart-2: 59 130 246;
-  color-scheme: dark;
-}
-
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --bg: 246 247 250;
-    --surface: 255 255 255;
-    --surface-2: 241 244 248;
-    --border: 222 227 235;
-    --fg: 15 23 42;
-    --muted: 92 104 124;
-    --brand: 22 163 74;
-    --brand-fg: 255 255 255;
-    --danger: 220 38 38;
-    --warning: 217 119 6;
-    --chart-1: 22 163 74;
-    --chart-2: 37 99 235;
-    color-scheme: light;
-  }
-}
-
-:root[data-theme="light"] {
-  --bg: 246 247 250;
+  --bg: 247 246 243;
   --surface: 255 255 255;
-  --surface-2: 241 244 248;
-  --border: 222 227 235;
-  --fg: 15 23 42;
-  --muted: 92 104 124;
-  --brand: 22 163 74;
+  --surface-2: 241 240 236;
+  --border: 228 226 220;
+  --fg: 20 22 26;
+  --muted: 91 96 107;
+  --brand: 217 72 15;
   --brand-fg: 255 255 255;
-  --danger: 220 38 38;
-  --warning: 217 119 6;
-  --chart-1: 22 163 74;
-  --chart-2: 37 99 235;
+  --money: 15 138 76;
+  --danger: 208 47 34;
+  --warning: 178 107 0;
+  --info: 37 99 235;
+  --chart-1: 15 138 76;
+  --chart-2: 217 72 15;
   color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg: 14 15 18;
+  --surface: 22 24 29;
+  --surface-2: 31 34 41;
+  --border: 44 48 57;
+  --fg: 242 242 240;
+  --muted: 163 168 179;
+  --brand: 255 122 61;
+  --brand-fg: 26 10 2;
+  --money: 52 199 123;
+  --danger: 255 107 94;
+  --warning: 245 184 61;
+  --info: 96 150 255;
+  --chart-1: 52 199 123;
+  --chart-2: 255 122 61;
+  color-scheme: dark;
 }
 
 body {
   @apply bg-bg text-fg antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
+
+h1, h2, h3, .font-display {
+  font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
 }
 
 @layer components {
   .card {
-    @apply rounded-xl border border-border bg-surface;
+    @apply rounded-2xl border border-border/80 bg-surface;
   }
   .input {
-    @apply w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-fg placeholder:text-muted
-      focus:outline-none focus:ring-2 focus:ring-brand/60;
+    @apply w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-sm text-fg placeholder:text-muted/80
+      focus:border-brand/60 focus:outline-none focus:ring-2 focus:ring-brand/25;
   }
   .label {
-    @apply mb-1 block text-xs font-medium text-muted;
+    @apply mb-1.5 block text-xs font-medium text-muted;
   }
   .table-base {
     @apply w-full text-left text-sm;
   }
   .table-base th {
-    @apply border-b border-border px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-muted;
+    @apply border-b border-border px-4 py-3 text-xs font-medium text-muted;
   }
   .table-base td {
-    @apply border-b border-border/60 px-4 py-3;
+    @apply border-b border-border/60 px-4 py-3.5;
   }
+  .num {
+    @apply tabular-nums tracking-tight;
+  }
+}
+
+@layer utilities {
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.animate-rise {
+  animation: rise 0.35s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise { animation: none; }
+  * { transition-duration: 0s !important; }
+}
+
+@media print {
+  aside, nav, header, .no-print { display: none !important; }
+  .lg\:pl-64 { padding-left: 0 !important; }
 }

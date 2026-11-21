@@ -1,22 +1,24 @@
 "use client";
 
-import { KeyRound, Plus, Search, Ticket, UserPlus, Users } from "lucide-react";
-import { useState } from "react";
+import { KeyRound, MessageCircle, Plus, Search, Ticket, UserPlus, Users } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { AssignMembershipForm } from "@/components/members/AssignMembershipForm";
 import { MemberForm } from "@/components/members/MemberForm";
-import { Badge, Button, Card, EmptyState, ErrorNote, Field, Input, Loading, Modal, PageHeader, Select } from "@/components/shared/ui";
+import { Button, Card, EmptyState, ErrorNote, Field, Input, Loading, Modal, PageHeader } from "@/components/shared/ui";
 import { useApi } from "@/hooks/useApi";
 import { usePlans, useTrainers } from "@/hooks/useLookups";
 import { useRole } from "@/hooks/useRole";
-import { formatDate, humanize } from "@/lib/utils";
+import { cn, daysPhrase, formatCurrency, formatDate, initials, whatsappLink } from "@/lib/utils";
 import { post } from "@/services/api";
 import type { Member, Page } from "@/types";
 
 const PAGE_SIZE = 25;
 
 export default function MembersPage() {
+  const params = useSearchParams();
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState(params.get("status") ?? "");
   const [offset, setOffset] = useState(0);
   const { data, loading, error, reload } = useApi<Page<Member>>("/members", { search, status, offset, limit: PAGE_SIZE });
   const { trainers, names: trainerNames } = useTrainers();
@@ -25,12 +27,13 @@ export default function MembersPage() {
   const [assignFor, setAssignFor] = useState<Member | null>(null);
   const [portalFor, setPortalFor] = useState<Member | null>(null);
   const isTrainer = useRole() === "trainer";
+  useEffect(() => { if (params.get("new") === "1") setEditing("new"); }, [params]);
 
   return (
     <>
       <PageHeader
         title={isTrainer ? "My members" : "Members"}
-        description="Everyone who trains at your gym."
+        description={data ? `${data.total} ${status ? status : ""} member${data.total === 1 ? "" : "s"}`.replace("  ", " ") : "Everyone who trains at your gym."}
         actions={!isTrainer && <Button onClick={() => setEditing("new")}><Plus className="h-4 w-4" /> Add member</Button>}
       />
       <Card>
@@ -39,7 +42,12 @@ export default function MembersPage() {
             <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted" />
             <Input className="pl-9" placeholder="Search name, phone or email" value={search} onChange={(e) => { setSearch(e.target.value); setOffset(0); }} />
           </div>
-          <Select className="sm:w-44" value={status} onChange={(e) => { setStatus(e.target.value); setOffset(0); }} placeholder="All statuses" options={["active", "expired", "inactive"]} />
+          <div className="scrollbar-none flex gap-1 overflow-x-auto" role="group" aria-label="Filter members">
+            {[{ v: "", l: "All" }, { v: "active", l: "Active" }, { v: "expired", l: "Expired" }, { v: "inactive", l: "Inactive" }].map((f) => (
+              <button key={f.v} onClick={() => { setStatus(f.v); setOffset(0); }}
+                className={cn("whitespace-nowrap rounded-full border px-3.5 py-2 text-sm", status === f.v ? "border-fg bg-fg font-semibold text-bg" : "border-border text-muted hover:text-fg")}>{f.l}</button>
+            ))}
+          </div>
         </div>
         {error && <div className="p-4"><ErrorNote message={error} /></div>}
         {loading && !data ? (
@@ -47,46 +55,42 @@ export default function MembersPage() {
         ) : !data?.items.length ? (
           <EmptyState icon={<Users className="h-8 w-8" />} title="No members found" description={search || status ? "Try a different search or filter." : "Add your first member to get started."} />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="table-base">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Phone</th>
-                  <th>Status</th>
-                  <th>Goal</th>
-                  <th>Trainer</th>
-                  <th>Joined</th>
-                  {!isTrainer && <th className="text-right">Actions</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {data.items.map((m) => (
-                  <tr key={m.id} className="hover:bg-surface-2/50">
-                    <td>
-                      <button className="font-medium hover:text-brand" onClick={() => !isTrainer && setEditing(m)}>{m.full_name}</button>
-                      {m.email && <p className="text-xs text-muted">{m.email}</p>}
-                    </td>
-                    <td className="text-muted">{m.phone}</td>
-                    <td><Badge value={m.status} /></td>
-                    <td className="text-muted">{humanize(m.fitness_goal)}</td>
-                    <td className="text-muted">{m.trainer_id ? trainerNames[m.trainer_id] : "—"}</td>
-                    <td className="text-muted">{formatDate(m.joined_on)}</td>
-                    {!isTrainer && (
-                      <td className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button size="sm" variant="secondary" onClick={() => setAssignFor(m)}><Ticket className="h-3.5 w-3.5" /> Membership</Button>
-                          {!m.user_id && (
-                            <Button size="sm" variant="ghost" onClick={() => setPortalFor(m)} title="Give app access"><KeyRound className="h-3.5 w-3.5" /></Button>
-                          )}
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ul className="divide-y divide-border/60">
+            {data.items.map((m) => {
+              const days = m.days_left;
+              const tone = days == null ? "text-muted" : days < 0 ? "text-danger" : days <= 7 ? "text-warning" : "text-muted";
+              return (
+                <li key={m.id} className="flex flex-col gap-2 px-4 py-3 hover:bg-surface-2/60 sm:flex-row sm:items-center sm:gap-4 sm:px-5">
+                  <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => !isTrainer && setEditing(m)}>
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-2 text-xs font-bold">{initials(m.full_name)}</span>
+                    <span className="min-w-0">
+                      <span className="block truncate font-semibold">{m.full_name}</span>
+                      <span className="block truncate text-xs text-muted">
+                        {m.plan_name ?? "No plan yet"}
+                        {days != null && <> · <span className={cn("font-medium", tone)}>{daysPhrase(days)}</span></>}
+                        {m.trainer_id && trainerNames[m.trainer_id] && <> · {trainerNames[m.trainer_id]}</>}
+                      </span>
+                    </span>
+                  </button>
+                  <div className="flex items-center gap-2 pl-[3.25rem] text-xs sm:pl-0">
+                    <span className="hidden w-28 text-muted md:block">{m.last_visit_at ? `Visited ${formatDate(m.last_visit_at, { day: "numeric", month: "short" })}` : "No visits yet"}</span>
+                    <span className={cn("num w-24 font-semibold sm:text-right", m.due_amount ? "text-danger" : "text-muted")}>
+                      {m.due_amount ? `${formatCurrency(m.due_amount)} due` : "Paid up"}
+                    </span>
+                    <span className="ml-auto flex gap-1 sm:ml-0">
+                      <a href={whatsappLink(m.phone)} target="_blank" rel="noreferrer" className="rounded-xl border border-border p-2 hover:bg-surface-2" aria-label={`WhatsApp ${m.full_name}`}>
+                        <MessageCircle className="h-4 w-4 text-money" />
+                      </a>
+                      {!isTrainer && <Button size="sm" variant="secondary" onClick={() => setAssignFor(m)}><Ticket className="h-3.5 w-3.5" /> {days != null ? "Renew" : "Add plan"}</Button>}
+                      {!isTrainer && !m.user_id && (
+                        <Button size="sm" variant="ghost" onClick={() => setPortalFor(m)} title="Give app access" aria-label="Give member app access"><KeyRound className="h-3.5 w-3.5" /></Button>
+                      )}
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         )}
         {data && data.total > PAGE_SIZE && (
           <div className="flex items-center justify-between border-t border-border px-4 py-3 text-xs text-muted">

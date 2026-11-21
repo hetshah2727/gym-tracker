@@ -5,6 +5,10 @@ import tempfile
 _tmpdir = tempfile.mkdtemp(prefix="gymflow-test-")
 os.environ["DATABASE_URL"] = f"sqlite:///{_tmpdir}/test.db"
 os.environ["ANTHROPIC_API_KEY"] = ""      # use the offline diet template
+os.environ["GROQ_API_KEY"] = ""           # never call live AI providers from tests
+os.environ["GEMINI_API_KEY"] = ""
+os.environ["RAZORPAY_KEY_ID"] = ""
+os.environ["RAZORPAY_KEY_SECRET"] = ""
 os.environ["ENABLE_SCHEDULER"] = "false"
 os.environ["RAZORPAY_WEBHOOK_SECRET"] = "whsec_test"
 os.environ["SECRET_KEY"] = "test-secret-key-that-is-at-least-32-bytes-long"

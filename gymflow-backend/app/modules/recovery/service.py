@@ -145,6 +145,62 @@ def renewal_message(gym: Gym, member: Member, ms: Membership, price: float) -> s
             f"to keep training without a break. Reply here or visit the front desk.")
 
 
+def payment_message(gym: Gym, member: Member, payment: Payment) -> str:
+    return (f"Hi {member.full_name.split()[0]}, a payment of {gym.currency} {float(payment.amount):,.0f} is pending "
+            f"at {gym.name}. Please pay at the desk or reply for a payment link.")
+
+
+# ---------------------------------------------------------------- "who owes money" list for the owner
+
+MONEY_TYPES = (OpportunityType.UPCOMING_RENEWAL, OpportunityType.EXPIRED_MEMBERSHIP,
+               OpportunityType.OUTSTANDING_PAYMENT, OpportunityType.FAILED_PAYMENT)
+
+
+def due_list(db: Session, today: date | None = None, limit: int = 500) -> dict:
+    """Open money opportunities as a plain, bucketed list: overdue / ending this week / ending later.
+
+    Amounts are what the member owes or what a renewal costs (the opportunity's potential) - not revenue.
+    """
+    today = today or date.today()
+    gym = db.get(Gym, get_current_gym_id())
+    opps = TenantRepository(RecoveryOpportunity, db).list(
+        RecoveryOpportunity.type.in_(MONEY_TYPES), RecoveryOpportunity.status.in_(OPEN_OPPORTUNITY_STATUSES),
+        limit=limit, order_by=RecoveryOpportunity.due_date)
+    items = []
+    for o in opps:
+        member = db.get(Member, o.member_id) if o.member_id else None
+        if member is None:
+            continue
+        ms = db.get(Membership, o.membership_id) if o.membership_id else None
+        plan = db.get(MembershipPlan, ms.plan_id) if ms and ms.plan_id else None
+        payment = db.get(Payment, o.payment_id) if o.payment_id else None
+        if payment is not None:
+            days = (payment.due_date - today).days if payment.due_date else 0
+            message = payment_message(gym, member, payment)
+            kind = "failed" if o.type == OpportunityType.FAILED_PAYMENT else "unpaid"
+        else:
+            days = (ms.end_date - today).days if ms else 0
+            message = renewal_message(gym, member, ms, float(o.potential_revenue)) if ms else None
+            kind = "renewal"
+        bucket = "overdue" if (payment is not None and days <= 0) or days < 0 else "this_week" if days <= 7 else "later"
+        items.append({
+            "id": str(o.id), "kind": kind, "bucket": bucket, "member_id": str(member.id),
+            "name": member.full_name, "phone": member.phone, "plan": plan.name if plan else None,
+            "amount": float(o.potential_revenue), "days": days, "message": message,
+            "contact_count": o.contact_count,
+            "can_pay_online": payment is not None or (ms is not None and kind == "renewal"),
+            "last_contacted_at": o.last_contacted_at.isoformat() if o.last_contacted_at else None,
+        })
+    order = {"overdue": 0, "this_week": 1, "later": 2}
+    items.sort(key=lambda i: (order[i["bucket"]], i["days"]))
+    buckets = {b: {"count": sum(1 for i in items if i["bucket"] == b),
+                   "amount": round(sum(i["amount"] for i in items if i["bucket"] == b), 2)} for b in order}
+    from app.integrations.payments import razorpay
+
+    return {"currency": gym.currency, "total": round(sum(i["amount"] for i in items), 2), "count": len(items),
+            "buckets": buckets, "items": items, "payment_links": razorpay.is_configured()}
+
+
 def sync_payments(db: Session, today: date) -> int:
     """Workflow 6 - outstanding / failed payments -> recovery opportunities."""
     members = TenantRepository(Member, db)
@@ -290,6 +346,48 @@ def on_payment_paid(db: Session, payment: Payment) -> RecoveryOpportunity | None
     return None
 
 
+def mark_paid_now(db: Session, opp: RecoveryOpportunity, user: User | None, method, reference: str | None = None,
+                  gateway_payment_id: str | None = None) -> RecoveryOpportunity:
+    """One-tap "Mark paid" for the owner.
+
+    * Unpaid/failed fee: marks that payment PAID (payment.paid closes the opportunity).
+    * Renewal/expired: creates the renewal membership for the same plan, paid now; its payment closes the
+      opportunity. Revenue is still credited only through a real PAID payment record.
+    """
+    from app.modules.memberships.service import assign_membership, renewal_start
+    from app.modules.payments.service import mark_paid
+
+    if opp.status not in OPEN_OPPORTUNITY_STATUSES:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This has already been closed")
+    if opp.payment_id:
+        payment = db.get(Payment, opp.payment_id)
+        if payment.status != PaymentStatus.PAID:
+            mark_paid(db, payment, method, reference=reference, actor_user_id=user.id if user else None,
+                      gateway_payment_id=gateway_payment_id, verified_by="gateway" if gateway_payment_id else "manual")
+    elif opp.type in (OpportunityType.UPCOMING_RENEWAL, OpportunityType.EXPIRED_MEMBERSHIP) and opp.membership_id:
+        ms = db.get(Membership, opp.membership_id)
+        member = db.get(Member, opp.member_id)
+        plan = db.get(MembershipPlan, ms.plan_id) if ms and ms.plan_id else None
+        if plan is None or member is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                "The plan for this membership no longer exists. Renew from the member's page.")
+        new_ms = assign_membership(db, member, plan, start_date=renewal_start(ms), amount=_renewal_price(db, ms),
+                                   paid=True, payment_method=method)
+        payment = TenantRepository(Payment, db).first(Payment.membership_id == new_ms.id)
+        if payment is not None:
+            payment.reference = reference or payment.reference
+            if gateway_payment_id:
+                payment.gateway_payment_id, payment.verified_by = gateway_payment_id, "gateway"
+    else:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Nothing to collect for this item")
+    db.refresh(opp)
+    if opp.status != OpportunityStatus.WON and payment is not None and payment.status == PaymentStatus.PAID:
+        close_with_payment(db, opp, payment, outcome="Paid online" if gateway_payment_id else "Paid at the desk",
+                           user=user)
+    db.commit()
+    return opp
+
+
 def record_contact(db: Session, opp: RecoveryOpportunity, user: User, note: str | None) -> RecoveryOpportunity:
     if opp.status not in OPEN_OPPORTUNITY_STATUSES:
         raise HTTPException(status.HTTP_409_CONFLICT, "Opportunity is closed")
@@ -318,25 +416,37 @@ def close_without_revenue(db: Session, opp: RecoveryOpportunity, user: User, *, 
     return opp
 
 
+RENEWAL_LINK_PREFIX = "rnw_"
+
+
 def payment_link(db: Session, opp: RecoveryOpportunity) -> dict:
     """Razorpay payment link for the outstanding payment (only when Razorpay is configured)."""
     from app.integrations.payments import razorpay
 
-    if not opp.payment_id:
+    if opp.status not in OPEN_OPPORTUNITY_STATUSES:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This has already been closed")
+    renewal = opp.payment_id is None and opp.membership_id is not None and opp.type in (
+        OpportunityType.UPCOMING_RENEWAL, OpportunityType.EXPIRED_MEMBERSHIP)
+    if not opp.payment_id and not renewal:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This opportunity has no payment to collect")
-    payment = db.get(Payment, opp.payment_id)
-    if payment.status == PaymentStatus.PAID:
+    payment = db.get(Payment, opp.payment_id) if opp.payment_id else None
+    if payment is not None and payment.status == PaymentStatus.PAID:
         raise HTTPException(status.HTTP_409_CONFLICT, "Payment is already paid")
     if not razorpay.is_configured():
         return {"configured": False, "url": None,
                 "detail": "Connect Razorpay to send payment links. Until then, collect at the desk and mark paid."}
-    member = db.get(Member, payment.member_id)
-    gym = db.get(Gym, payment.gym_id)
+    member = db.get(Member, opp.member_id)
+    gym = db.get(Gym, opp.gym_id)
+    if payment is not None:
+        amount, reference, label = float(payment.amount), str(payment.id), "membership fee"
+    else:
+        # Renewal: the link points at the opportunity; the signed webhook creates the renewal once it's paid.
+        amount, reference, label = float(opp.potential_revenue), RENEWAL_LINK_PREFIX + opp.id.hex, "membership renewal"
     try:
-        link = razorpay.create_payment_link(float(payment.amount), reference_id=str(payment.id),
-                                            description=f"{gym.name} membership fee", currency=gym.currency,
+        link = razorpay.create_payment_link(amount, reference_id=reference,
+                                            description=f"{gym.name} {label}", currency=gym.currency,
                                             customer={"name": member.full_name, "contact": member.phone},
-                                            notes={"gym_id": str(gym.id), "payment_id": str(payment.id)})
+                                            notes={"gym_id": str(gym.id), "opportunity_id": str(opp.id)})
     except razorpay.PaymentGatewayError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Payment gateway error: {exc}")
     # The webhook (payment_link.paid) finds the payment again through reference_id.

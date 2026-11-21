@@ -17,7 +17,7 @@ from app.database.models import AgentConfig, AgentRun, AIConversation, AIMessage
 from app.database.models.enums import ActionStatus, Channel, ConversationStatus, Role
 from app.database.repositories.base import TenantRepository
 from app.database.session import get_db
-from app.integrations.ai import claude
+from app.integrations.ai import llm
 from app.modules.common import get_or_404
 from app.modules.crm import service as crm
 from app.services import messaging
@@ -106,8 +106,8 @@ def agents(db: Session = Depends(get_db), user: User = Depends(staff)):
                     "config": {"enabled": cfg.enabled, "channels": cfg.channels, "working_hours": cfg.working_hours,
                                "escalation_rules": cfg.escalation_rules, "daily_message_limit": cfg.daily_message_limit,
                                "settings": cfg.settings}})
-    return {"engine": "claude" if claude.is_configured() else "rules",
-            "engine_note": None if claude.is_configured() else
+    return {"engine": llm.engine() or "rules",
+            "engine_note": None if llm.is_configured() else
             "No AI provider key is configured: agents use GymFlow's rule-based engine (approved answers only).",
             "agents": out}
 
@@ -244,7 +244,7 @@ def usage(days: int = Query(30, ge=1, le=366), db: Session = Depends(get_db), _=
         row["denied_tool_calls"] += sum(1 for t in r.tools_called or [] if t.get("denied"))
     ent = entitlements.resolve(db)
     return {"days": days, "by_agent": dict(by_agent), "total_cost_usd": round(sum(r.cost_usd for r in runs), 4),
-            "engine": "claude" if claude.is_configured() else "rules",
+            "engine": llm.engine() or "rules",
             "monthly_usage": {m: {"used": entitlements.usage(db, m), "limit": ent.limits.get(m)}
                               for m in ("ai_messages", "seo_audits", "content_generations")},
             "recent_runs": [{"agent": r.agent_key, "engine": r.engine, "status": r.status, "ms": r.duration_ms,

@@ -1,5 +1,10 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.core.rate_limit import public_limit
+from app.database.models import Gym
 
 from app.core.permissions import get_current_user
 from app.database.models import User
@@ -21,6 +26,20 @@ def register_gym(data: RegisterGymRequest, db: Session = Depends(get_db)):
 @router.post("/login", response_model=TokenResponse)
 def login(data: LoginRequest, db: Session = Depends(get_db)):
     return service.authenticate(db, data.email, data.password)
+
+
+@router.post("/demo-login", response_model=TokenResponse)
+def demo_login(db: Session = Depends(get_db), _=Depends(public_limit("demo-login", 10))):
+    """One-click demo: a token for the IronCore demo owner. Only the flagged demo gym, only when enabled."""
+    from app.demo.ironcore import DEMO_SLUG, OWNER
+
+    if not settings.DEMO_LOGIN_ENABLED:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "The demo is not available")
+    gym = db.scalar(select(Gym).where(Gym.slug == DEMO_SLUG))
+    user = db.scalar(select(User).where(User.email == OWNER[0]))
+    if gym is None or not (gym.settings or {}).get("is_demo") or user is None or user.gym_id != gym.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "The demo is not available")
+    return service.issue_token(user)
 
 
 @router.get("/me", response_model=UserOut)

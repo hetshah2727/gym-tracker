@@ -23,7 +23,7 @@ export default function AiSettingsPage() {
       {agents.data?.engine_note && <Note className="mb-4">{agents.data.engine_note}</Note>}
       {usage.data && <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {Object.entries(usage.data.monthly_usage).map(([k, v]) => <Kpi key={k} label={`${humanize(k)} this month`} value={`${v.used}${v.limit != null ? ` / ${v.limit}` : ""}`} />)}
-        <Kpi label="AI cost (30 days)" value={`$${usage.data.total_cost_usd.toFixed(2)}`} hint={usage.data.engine === "rules" ? "Rule engine - no AI cost" : "Estimated from token usage"} />
+        <Kpi label="AI cost (30 days)" value={`$${usage.data.total_cost_usd.toFixed(2)}`} hint={usage.data.engine === "rules" ? "Quick answers from your data – no AI cost" : "Estimated"} />
       </div>}
       {!!actions.data?.length && <Card title="Waiting for your confirmation" className="mt-4"><ul className="divide-y divide-border/60">{actions.data.map((a) => (
         <li key={a.id} className="flex items-center justify-between gap-2 px-4 py-3 text-sm"><span>{a.summary} <span className="text-xs text-muted">· {humanize(a.agent)} · {formatDateTime(a.created_at)}</span></span>

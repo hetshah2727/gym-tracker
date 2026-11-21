@@ -248,6 +248,34 @@ def draft_post(data: PostDraftIn, db: Session = Depends(get_db), _=Depends(staff
     return {**post, "generated_by": by, "warnings": warnings}
 
 
+class PostImageIn(BaseModel):
+    text: str = Field(min_length=3, max_length=1500)
+    style: str | None = Field(None, max_length=200)
+
+
+@router.post("/posts/image")
+def post_image(data: PostImageIn, db: Session = Depends(get_db), _=Depends(staff)):
+    """Gemini image for a Google / Instagram post. Returned as a data URL for the owner to download and use."""
+    from app.core import entitlements as ent
+    from app.integrations.ai import gemini
+
+    if not gemini.is_configured():
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Image creation isn't switched on yet")
+    ent.enforce_limit(db, "content_generations")
+    facts = content.load_facts(db)
+    prompt = (f"A bright, realistic, high-quality square photo for a social media post by {facts.gym}, an Indian gym"
+              f"{' in ' + facts.city if facts.city else ''}. Post: \"{data.text}\". "
+              f"{'Style: ' + data.style + '. ' if data.style else ''}"
+              "Show a modern gym with real-looking people training. No text, no logos, no watermarks, "
+              "no before/after body comparisons.")
+    try:
+        img = gemini.image(prompt)
+    except gemini.AIError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+    ent.record_usage(db, "content_generations")
+    return {"image": img.data_url, "mime_type": img.mime_type, "generated_by": "gemini"}
+
+
 @router.post("/posts/publish")
 def publish_post(data: PostPublishIn, db: Session = Depends(get_db), user: User = Depends(owner)):
     try:

@@ -24,7 +24,7 @@ export default function MemberHome() {
 
   return (
     <>
-      <PageHeader title={`Hi, ${profile.data?.full_name.split(" ")[0]} 👋`} description={gym.data ? `Welcome to ${gym.data.name}` : undefined} />
+      <PageHeader title={`Hi, ${profile.data?.full_name.split(" ")[0]}`} description={gym.data ? `Welcome to ${gym.data.name}` : undefined} />
 
       {dues.length > 0 && (
         <div className="mb-4 flex items-start gap-3 rounded-xl border border-warning/40 bg-warning/10 p-4 text-sm">

@@ -12,7 +12,7 @@ import { del, post } from "@/services/api";
 interface Check_ { key: string; label: string; weight: number; passed: boolean; evidence: string; fix: string | null }
 interface Readiness { latest: { score: number; checklist: Check_[]; inconsistencies: { field: string; profile: string; other_source: string; value: unknown }[]; content_gaps: { label: string; fix: string }[]; created_at: string } | null; history: { score: number; at: string }[]; disclaimer: string }
 interface Validation { valid: boolean; errors: string[]; warnings: string[] }
-interface Visibility { queries: { id: string; question: string; runs: number; mentioned: number; last: { provider: string; mentioned: boolean; position: number | null; observed_at: string } | null }[]; providers: Record<string, { runs: number; mentioned: number; mention_rate: number | null }>; top_competitors: [string, number][]; sample_size: number; limitations: string }
+interface Visibility { queries: { id: string; question: string; runs: number; mentioned: number; last: { provider: string; method?: string; mentioned: boolean; position: number | null; observed_at: string } | null }[]; providers: Record<string, { runs: number; mentioned: number; mention_rate: number | null }>; top_competitors: [string, number][]; sample_size: number; limitations: string }
 type Tab = "readiness" | "schema" | "content" | "monitoring";
 
 export default function AiSearchPage() {
@@ -37,7 +37,7 @@ export default function AiSearchPage() {
   return (
     <FeatureGate feature="ai_search_readiness">
       <PageHeader title="AI search visibility" description="Make your gym's information clear, consistent and structured so AI assistants and search engines describe it correctly. No AI mention is ever guaranteed." />
-      <Tabs<Tab> value={tab} onChange={setTab} tabs={[{ value: "readiness", label: "GPT readiness" }, { value: "schema", label: "Structured data" }, { value: "content", label: "Content studio" }, { value: "monitoring", label: "Visibility monitoring" }]} />
+      <Tabs<Tab> value={tab} onChange={setTab} tabs={[{ value: "readiness", label: "Checklist" }, { value: "content", label: "Write content" }, { value: "monitoring", label: "Where you appear" }, { value: "schema", label: "For your web developer" }]} />
 
       {tab === "readiness" && <>
         <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -64,7 +64,7 @@ export default function AiSearchPage() {
         </>}
       </>}
 
-      {tab === "schema" && <Card title="Structured data assistant (JSON-LD)">
+      {tab === "schema" && <Card title="Website code for search engines (JSON-LD)">
         <div className="space-y-3 p-4">
           <div className="flex flex-wrap gap-2">
             <Select className="w-56" value={kind} onChange={(e) => setKind(e.target.value)} options={[{ value: "local_business", label: "Gym (ExerciseGym)" }, { value: "organization", label: "Organization" }, { value: "website", label: "WebSite" }, { value: "services", label: "Services" }, { value: "faq", label: "FAQ page (approved FAQs)" }]} />
@@ -108,8 +108,11 @@ export default function AiSearchPage() {
             <Input value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="e.g. Best gyms in Gotri, Vadodara" /><Button type="submit" variant="secondary" disabled={question.length < 5}><Plus className="h-4 w-4" /> Add</Button>
           </form>
           {!vis.data.queries.length ? <EmptyState title="No questions yet" /> : <ul className="divide-y divide-border/60">{vis.data.queries.map((q) => (
-            <li key={q.id} className="flex items-center justify-between px-4 py-3 text-sm"><div><p className="font-medium">{q.question}</p><p className="text-xs text-muted">{q.runs ? `Mentioned in ${q.mentioned} of ${q.runs} samples · last: ${q.last?.provider} ${q.last?.mentioned ? `(position ${q.last.position ?? "?"})` : "(not mentioned)"}` : "No samples yet"} <SourceBadge source="manual_research" /></p></div>
-              <button aria-label="Remove question" onClick={() => run("dq", () => del(`/ai-search/visibility/queries/${q.id}`)).then(vis.reload)} className="text-muted hover:text-danger"><X className="h-4 w-4" /></button></li>))}</ul>}
+            <li key={q.id} className="flex items-center justify-between px-4 py-3 text-sm"><div><p className="font-medium">{q.question}</p><p className="text-xs text-muted">{q.runs ? `Mentioned in ${q.mentioned} of ${q.runs} samples · last: ${q.last?.provider} ${q.last?.mentioned ? `(position ${q.last.position ?? "?"})` : "(not mentioned)"}` : "No samples yet"} <SourceBadge source={q.last?.method ?? "manual_research"} /></p></div>
+              <div className="flex items-center gap-2">
+              <Button size="sm" variant="secondary" loading={busy === `chk-${q.id}`} onClick={() => run(`chk-${q.id}`, () => post<{ mentioned: boolean; position: number | null; sources: unknown[] }>(`/ai-search/visibility/queries/${q.id}/check`),
+                (r) => r.mentioned ? `You're mentioned${r.position ? ` at #${r.position}` : ""} (${r.sources.length} sources checked)` : `Not mentioned this time (${r.sources.length} sources checked)`).then(vis.reload)}>Check on Google now</Button>
+              <button aria-label="Remove question" onClick={() => run("dq", () => del(`/ai-search/visibility/queries/${q.id}`)).then(vis.reload)} className="text-muted hover:text-danger"><X className="h-4 w-4" /></button></div></li>))}</ul>}
         </Card>
         <Card title="Record a research sample" className="mt-4">
           <form className="grid gap-3 p-4 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault(); run("res", () => post(`/ai-search/visibility/queries/${result.query}/results`, { provider: result.provider, mentioned: result.mentioned, position: result.position ? Number(result.position) : null, competitors_mentioned: result.competitors.split(",").map((s) => s.trim()).filter(Boolean) }), "Sample recorded").then(vis.reload); }}>

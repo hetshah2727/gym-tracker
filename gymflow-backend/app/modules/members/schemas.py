@@ -49,6 +49,12 @@ class MemberOut(MemberBase, ORMModel):
     status: MemberStatus
     joined_on: date
     created_at: datetime
+    # Filled in by the list endpoint so the owner sees what matters at a glance.
+    plan_name: str | None = None
+    end_date: date | None = None
+    days_left: int | None = None
+    due_amount: float = 0
+    last_visit_at: datetime | None = None
 
 
 class PortalAccessRequest(BaseModel):

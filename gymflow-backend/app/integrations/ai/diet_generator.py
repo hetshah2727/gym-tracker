@@ -108,7 +108,23 @@ def _user_prompt(p: MemberProfile, calories: int, macros: Macros) -> str:
 
 
 def is_configured() -> bool:
-    return bool(settings.ANTHROPIC_API_KEY)
+    from app.integrations.ai import llm
+
+    return llm.is_configured()
+
+
+def generate_with_llm(p: MemberProfile) -> DietPlanDraft:
+    """Groq (or whichever text provider is active) with the same validated schema as the Claude path."""
+    from app.integrations.ai import llm
+
+    if llm.engine() == "claude":
+        return generate_with_claude(p)
+    calories, macros = compute_targets(p)
+    try:
+        plan, _usage = llm.parse(SYSTEM_PROMPT, _user_prompt(p, calories, macros), DietPlanDraft)
+    except llm.AIError as exc:
+        raise DietGenerationError(str(exc)) from exc
+    return plan
 
 
 def generate_with_claude(p: MemberProfile) -> DietPlanDraft:
@@ -179,5 +195,5 @@ def generate_from_template(p: MemberProfile) -> DietPlanDraft:
 def generate_diet_plan(p: MemberProfile) -> tuple[DietPlanDraft, bool]:
     """Returns (plan, ai_generated)."""
     if is_configured():
-        return generate_with_claude(p), True
+        return generate_with_llm(p), True
     return generate_from_template(p), False

@@ -30,8 +30,8 @@ export default function RegisterPage() {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
-        <h1 className="text-lg font-semibold">Create your gym workspace</h1>
-        <p className="text-sm text-muted">14-day free trial. We set up default plans and reminders for you.</p>
+        <h1 className="font-display text-2xl font-bold">Start your free trial</h1>
+        <p className="text-sm text-muted">14 days free, no card needed. We set up common membership plans and WhatsApp reminders for you.</p>
       </div>
       <ErrorNote message={error} />
       <Field label="Gym name">
@@ -54,7 +54,7 @@ export default function RegisterPage() {
       <Field label="Password" hint="At least 8 characters">
         <Input type="password" required minLength={8} autoComplete="new-password" value={form.password} onChange={set("password")} />
       </Field>
-      <Button type="submit" loading={loading} className="w-full">Create gym</Button>
+      <Button type="submit" loading={loading} className="w-full" size="lg">Create my gym</Button>
       <p className="text-center text-sm text-muted">
         Already registered? <Link href="/login" className="text-brand">Log in</Link>
       </p>

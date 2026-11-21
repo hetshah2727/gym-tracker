@@ -14,16 +14,19 @@ const SOURCE_LABELS: Record<string, { label: string; tone: string; title: string
   demo_simulated: { label: "Demo data", tone: "bg-warning/15 text-warning", title: "Simulated for the demo – not from a live integration" },
   manual: { label: "Entered manually", tone: "bg-surface-2 text-muted", title: "Typed in by your team" },
   user_supplied: { label: "User-supplied", tone: "bg-surface-2 text-muted", title: "Figures entered by your team" },
+  live_search: { label: "Live Google check", tone: "bg-info/10 text-info", title: "Checked with Gemini using live Google Search results" },
+  groq: { label: "AI answer", tone: "bg-violet-500/15 text-violet-500", title: "Answered by AI using your GymFlow data" },
+  gemini: { label: "AI draft", tone: "bg-violet-500/15 text-violet-500", title: "Written by AI from your approved profile – review before use" },
   manual_research: { label: "Manual research", tone: "bg-surface-2 text-muted", title: "Sampled by hand – not automatic monitoring" },
   google_business_profile: { label: "Google (live)", tone: "bg-sky-500/15 text-sky-400", title: "Synced from Google Business Profile" },
   google_search_console: { label: "Search Console", tone: "bg-sky-500/15 text-sky-400", title: "Synced from Google Search Console" },
-  crawl: { label: "Live crawl", tone: "bg-brand/15 text-brand", title: "Fetched from the website by GymFlow" },
-  observed: { label: "Observed", tone: "bg-brand/15 text-brand", title: "Seen directly on the website" },
+  crawl: { label: "Live crawl", tone: "bg-money/10 text-money", title: "Fetched from the website by GymFlow" },
+  observed: { label: "Observed", tone: "bg-money/10 text-money", title: "Seen directly on the website" },
   ai: { label: "AI draft", tone: "bg-violet-500/15 text-violet-400", title: "Written by AI from your approved profile – review before use" },
   template: { label: "Template draft", tone: "bg-surface-2 text-muted", title: "Built from your profile by a template – review before use" },
   rule_suggestion: { label: "Suggestion", tone: "bg-surface-2 text-muted", title: "Idea based on your profile – no search-volume data" },
-  rules: { label: "Rule engine", tone: "bg-surface-2 text-muted", title: "No AI key configured – answers come from GymFlow rules" },
-  claude: { label: "Claude", tone: "bg-violet-500/15 text-violet-400", title: "Answered by Claude using GymFlow tools" },
+  rules: { label: "Quick answer", tone: "bg-surface-2 text-muted", title: "Answered from your GymFlow data" },
+  claude: { label: "AI answer", tone: "bg-violet-500/15 text-violet-500", title: "Answered by AI using your GymFlow data" },
 };
 
 export function SourceBadge({ source, className }: { source: string | null | undefined; className?: string }) {
@@ -36,7 +39,7 @@ export function Note({ tone = "info", children, className }: { tone?: "info" | "
   const Icon = tone === "warning" ? AlertTriangle : tone === "success" ? CheckCircle2 : Info;
   return (
     <div className={cn("flex gap-2 rounded-lg border px-3 py-2 text-sm",
-      tone === "warning" ? "border-warning/40 bg-warning/10 text-warning" : tone === "success" ? "border-brand/40 bg-brand/10 text-brand" : "border-border bg-surface-2 text-muted", className)}>
+      tone === "warning" ? "border-warning/40 bg-warning/10 text-warning" : tone === "success" ? "border-money/40 bg-money/10 text-money" : "border-border bg-surface-2 text-muted", className)}>
       <Icon className="mt-0.5 h-4 w-4 shrink-0" />
       <div>{children}</div>
     </div>
@@ -60,8 +63,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="fixed bottom-4 right-4 z-[60] flex w-[min(92vw,360px)] flex-col gap-2" aria-live="polite">
         {toasts.map((t) => (
-          <div key={t.id} className={cn("card flex items-start gap-2 px-3 py-2.5 text-sm shadow-lg", t.tone === "error" ? "border-danger/50" : "border-brand/50")}>
-            {t.tone === "error" ? <AlertTriangle className="mt-0.5 h-4 w-4 text-danger" /> : <CheckCircle2 className="mt-0.5 h-4 w-4 text-brand" />}
+          <div key={t.id} className={cn("card flex animate-rise items-start gap-2 px-3 py-2.5 text-sm shadow-soft", t.tone === "error" ? "border-danger/50" : "border-money/50")}>
+            {t.tone === "error" ? <AlertTriangle className="mt-0.5 h-4 w-4 text-danger" /> : <CheckCircle2 className="mt-0.5 h-4 w-4 text-money" />}
             <span className="flex-1">{t.text}</span>
             <button aria-label="Dismiss" onClick={() => setToasts((x) => x.filter((y) => y.id !== t.id))}><X className="h-4 w-4 text-muted" /></button>
           </div>
@@ -144,10 +147,10 @@ export function FeatureGate({ feature, children }: { feature: string; children: 
   const info = ent.catalog[feature];
   return (
     <div className="card mx-auto mt-10 max-w-lg p-8 text-center">
-      <Lock className="mx-auto mb-3 h-6 w-6 text-muted" />
-      <p className="font-semibold">{info?.label ?? humanize(feature)} isn&apos;t in your plan</p>
-      <p className="mt-1 text-sm text-muted">Available on the {humanize(info?.tier ?? "growth")} plan. You&apos;re on {ent.plan_name ?? "no plan"} ({humanize(ent.status)}).</p>
-      <Link href="/dashboard/plan" className="mt-4 inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-brand-fg">See plans</Link>
+      <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand/10 text-brand"><Lock className="h-5 w-5" /></div>
+      <p className="font-display text-lg font-bold">{info?.label ?? humanize(feature)} comes with the {humanize(info?.tier ?? "growth")} plan</p>
+      <p className="mt-1 text-sm text-muted">You&apos;re on {ent.plan_name ?? "no plan yet"}. Upgrade any time – your data stays exactly as it is.</p>
+      <Link href="/dashboard/plan" className="mt-5 inline-block rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-brand-fg">See plans</Link>
     </div>
   );
 }
@@ -207,9 +210,9 @@ export function Pager({ total, offset, limit, onChange }: { total: number; offse
 
 export function Kpi({ label, value, hint, href, tone }: { label: string; value: ReactNode; hint?: ReactNode; href?: string; tone?: "warning" | "danger" | "brand" }) {
   const body = (
-    <div className={cn("card h-full p-4 transition", href && "hover:border-brand/50")}>
+    <div className={cn("card h-full p-4 transition", href && "hover:border-fg/20 hover:shadow-soft")}>
       <p className="text-xs font-medium text-muted">{label}</p>
-      <p className={cn("mt-1.5 text-2xl font-semibold tabular-nums tracking-tight", tone === "danger" && "text-danger", tone === "warning" && "text-warning", tone === "brand" && "text-brand")}>{value}</p>
+      <p className={cn("num mt-1.5 font-display text-2xl font-bold", tone === "danger" && "text-danger", tone === "warning" && "text-warning", tone === "brand" && "text-money")}>{value}</p>
       {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
     </div>
   );

@@ -1,11 +1,14 @@
 """Application settings, loaded from environment variables / .env."""
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # The repo-root .env (shared keys) is read first; gymflow-backend/.env overrides it.
+    model_config = SettingsConfigDict(env_file=(str(Path(__file__).resolve().parents[3] / ".env"), ".env"),
+                                      env_file_encoding="utf-8", extra="ignore")
 
     APP_NAME: str = "GymFlow"
     ENVIRONMENT: str = "development"
@@ -21,9 +24,16 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
 
-    # AI (Claude) for diet plans
+    # AI. LLM_PROVIDER picks the text/agent model: auto (Groq if set, else Claude) | groq | claude.
+    LLM_PROVIDER: str = "auto"
+    GROQ_API_KEY: str | None = None
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
     ANTHROPIC_API_KEY: str | None = None
     AI_MODEL: str = "claude-opus-5-5"
+    # Gemini: Google/social posts, post images and live Google Search answers
+    GEMINI_API_KEY: str | None = None
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_IMAGE_MODEL: str = "gemini-3.1-flash-image"
 
     # WhatsApp Cloud API
     WHATSAPP_API_URL: str = "https://graph.facebook.com/v21.0"
@@ -86,6 +96,9 @@ class Settings(BaseSettings):
     # Optional keyword-metrics provider. Without one, keyword ideas are labelled as suggestions.
     KEYWORD_PROVIDER: str | None = None
     KEYWORD_PROVIDER_API_KEY: str | None = None
+
+    # "See a live demo gym" button: logs visitors into the IronCore demo tenant (never a real gym)
+    DEMO_LOGIN_ENABLED: bool = False
 
     # Public endpoint rate limits (requests per minute per IP)
     PUBLIC_RATE_LIMIT_PER_MINUTE: int = 20

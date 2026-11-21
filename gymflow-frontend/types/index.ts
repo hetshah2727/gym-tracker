@@ -82,6 +82,12 @@ export interface Member {
   joined_on: string;
   notes: string | null;
   created_at: string;
+  // From the members list endpoint
+  plan_name?: string | null;
+  end_date?: string | null;
+  days_left?: number | null;
+  due_amount?: number;
+  last_visit_at?: string | null;
 }
 
 export interface Trainer {

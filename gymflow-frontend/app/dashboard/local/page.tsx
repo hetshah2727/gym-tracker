@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, RefreshCcw, Sparkles } from "lucide-react";
+import { Copy, Download, ImageIcon, RefreshCcw, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { FeatureGate, Kpi, Note, SourceBadge, useAction, useQueryTab, useToast } from "@/components/shared/growth";
@@ -24,6 +24,7 @@ export default function LocalPage() {
   const [manual, setManual] = useState({ name: "", primary_category: "Gym", description: "", address: "", phone: "", website: "", services: "", review_count: "", rating: "" });
   const [post_, setPost] = useState({ kind: "update", details: "" });
   const [draft, setDraft] = useState<{ text: string; call_to_action: string; generated_by: string; warnings: string[] } | null>(null);
+  const [picture, setPicture] = useState<string | null>(null);
   const { busy, run } = useAction();
   const toast = useToast();
   const d = o.data;
@@ -84,7 +85,7 @@ export default function LocalPage() {
         </>}
 
         {tab === "posts" && <Card title="Draft a Business Profile post">
-          <form className="grid gap-3 p-4 sm:grid-cols-[160px_1fr_auto] sm:items-end" onSubmit={(e) => { e.preventDefault(); run("draft", () => post<typeof draft>("/local/posts/draft", post_)).then((r) => r && setDraft(r)); }}>
+          <form className="grid gap-3 p-4 sm:grid-cols-[160px_1fr_auto] sm:items-end" onSubmit={(e) => { e.preventDefault(); setPicture(null); run("draft", () => post<typeof draft>("/local/posts/draft", post_)).then((r) => r && setDraft(r)); }}>
             <Field label="Type"><Select value={post_.kind} onChange={(e) => setPost({ ...post_, kind: e.target.value })} options={["update", "offer", "event", "service"]} /></Field>
             <Field label="Details (your facts)"><Input value={post_.details} onChange={(e) => setPost({ ...post_, details: e.target.value })} placeholder="e.g. New 6 AM women's batch from 1 Dec" /></Field>
             <Button type="submit" loading={busy === "draft"}><Sparkles className="h-4 w-4" /> Draft</Button>
@@ -93,8 +94,16 @@ export default function LocalPage() {
             <SourceBadge source={draft.generated_by} />
             <Textarea rows={5} value={draft.text} onChange={(e) => setDraft({ ...draft, text: e.target.value })} />
             {draft.warnings.length > 0 && <Note tone="warning">Check before posting: {draft.warnings.join("; ")}</Note>}
-            <div className="flex gap-2">
+            {picture && (
+              <div className="flex flex-wrap items-end gap-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={picture} alt="Picture for this post" className="h-48 w-48 rounded-2xl object-cover" />
+                <a href={picture} download="gym-post.png" className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold hover:bg-surface-2"><Download className="h-4 w-4" /> Download picture</a>
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => { navigator.clipboard?.writeText(draft.text); toast("Copied"); }}><Copy className="h-4 w-4" /> Copy</Button>
+              <Button variant="secondary" loading={busy === "img"} onClick={() => run("img", () => post<{ image: string }>("/local/posts/image", { text: draft.text })).then((r) => r && setPicture(r.image))}><ImageIcon className="h-4 w-4" /> {picture ? "New picture" : "Create a picture"}</Button>
               {connected && <Button loading={busy === "pub"} onClick={() => run("pub", () => post("/local/posts/publish", { text: draft.text, call_to_action: draft.call_to_action === "CALL" ? "CALL" : undefined }), "Posted to Google").then(() => setDraft(null))}>Approve & publish</Button>}
             </div>
           </div>}

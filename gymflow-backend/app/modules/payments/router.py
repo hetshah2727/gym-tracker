@@ -12,13 +12,14 @@ from app.core.permissions import GYM_STAFF, tenant_user
 from app.core.tenant_context import tenant_scope
 from sqlalchemy.exc import IntegrityError
 
-from app.database.models import Gym, Member, Payment, WebhookEvent
-from app.database.models.enums import PaymentMethod, PaymentStatus
+from app.database.models import Gym, Member, Payment, RecoveryOpportunity, WebhookEvent
+from app.database.models.enums import OPEN_OPPORTUNITY_STATUSES, PaymentMethod, PaymentStatus
 from app.database.repositories.base import TenantRepository
 from app.database.session import get_db
 from app.integrations.payments import razorpay
 from app.modules.common import ORMModel, Page, get_or_404
 from app.modules.payments.service import mark_paid
+from app.modules.recovery import service as recovery_service
 from app.services import events
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
@@ -133,6 +134,28 @@ def create_checkout(payment_id: uuid.UUID, db: Session = Depends(get_db), _=Depe
                        key_id=settings.RAZORPAY_KEY_ID)
 
 
+def _renewal_link_paid(db: Session, ref: str, entity: dict, event_id: str) -> dict:
+    """A renewal payment link was paid: create the renewal (paid online) and credit it exactly once."""
+    try:
+        opp = db.get(RecoveryOpportunity, uuid.UUID(hex=ref[len(recovery_service.RENEWAL_LINK_PREFIX):]))
+    except ValueError:
+        opp = None
+    if opp is None:
+        return {"status": "unknown_order"}
+    try:
+        db.add(WebhookEvent(provider="razorpay", event_id=event_id, gym_id=opp.gym_id, event_type="payment_link.paid"))
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        return {"status": "duplicate"}
+    with tenant_scope(opp.gym_id):
+        if opp.status in OPEN_OPPORTUNITY_STATUSES:
+            recovery_service.mark_paid_now(db, opp, None, PaymentMethod.ONLINE, gateway_payment_id=entity.get("id"))
+        else:
+            db.commit()
+    return {"status": "ok"}
+
+
 @router.post("/webhooks/razorpay", include_in_schema=False)
 async def razorpay_webhook(request: Request, x_razorpay_signature: str | None = Header(None),
                            x_razorpay_event_id: str | None = Header(None), db: Session = Depends(get_db)):
@@ -149,6 +172,8 @@ async def razorpay_webhook(request: Request, x_razorpay_signature: str | None = 
     payment = None
     if kind == "payment_link.paid":
         ref = ((payload.get("payment_link") or {}).get("entity") or {}).get("reference_id")
+        if ref and ref.startswith(recovery_service.RENEWAL_LINK_PREFIX):
+            return _renewal_link_paid(db, ref, entity, x_razorpay_event_id or f"{kind}:{entity.get('id')}")
         try:
             payment = db.get(Payment, uuid.UUID(ref)) if ref else None
         except ValueError:

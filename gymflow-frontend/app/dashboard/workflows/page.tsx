@@ -18,7 +18,7 @@ export default function WorkflowsPage() {
       <PageHeader title="Workflow center" description="The automations that connect enquiries, trials, memberships, payments and visibility. They run inside GymFlow and are safe to re-run."
         actions={<Button loading={busy === "run"} onClick={() => run("run", () => post("/growth/workflows/daily/run"), "Daily workflows ran").then(reload)}><Play className="h-4 w-4" /> Run daily workflows now</Button>} />
       {loading || !data ? <Loading /> : <>
-        <Note className="mb-4">Daily job last ran: {data.daily_job.last_run_at ? formatDateTime(data.daily_job.last_run_at) : "never"}{data.daily_job.last_result && ` - ${Object.entries(data.daily_job.last_result).filter(([k]) => k !== "daily_report").map(([k, v]) => `${humanize(k)} ${typeof v === "object" ? Object.values(v as object).reduce((a: number, b) => a + Number(b), 0) : v}`).join(", ")}`}. Set ENABLE_SCHEDULER=true (or cron) for automatic runs.</Note>
+        <Note className="mb-4">Daily job last ran: {data.daily_job.last_run_at ? formatDateTime(data.daily_job.last_run_at) : "never"}{data.daily_job.last_result && ` - ${Object.entries(data.daily_job.last_result).filter(([k]) => k !== "daily_report").map(([k, v]) => `${humanize(k)} ${typeof v === "object" ? Object.values(v as object).reduce((a: number, b) => a + Number(b), 0) : v}`).join(", ")}`}. These run automatically every day.</Note>
         <div className="grid gap-4 md:grid-cols-2">{data.workflows.map((w) => (
           <Card key={w.key} title={w.name}>
             <div className="space-y-2 p-4 text-sm">

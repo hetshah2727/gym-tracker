@@ -20,6 +20,9 @@ FALLBACK_BETAS = ["server-side-fallback-2026-07-01"]
 PRICING = {
     "claude-opus-5-5": (4.0, 20.0), "claude-sonnet-5-5": (2.0, 10.0), "claude-haiku-5-5": (0.10, 0.50),
     "claude-fable-5-2": (8.0, 40.0),
+    # Approximate list prices for the other providers (check the provider console for current rates).
+    "openai/gpt-oss-120b": (0.15, 0.75), "openai/gpt-oss-20b": (0.075, 0.30), "qwen/qwen3.8-27b": (0.30, 0.60),
+    "gemini-flash-latest": (0.30, 2.50), "gemini-2.5-flash": (0.30, 2.50),
 }
 
 
@@ -35,7 +38,7 @@ class Usage:
 
     @property
     def cost_usd(self) -> float:
-        inp, out = PRICING.get(self.model, PRICING["claude-opus-5-5"])
+        inp, out = PRICING.get(self.model, PRICING["claude-opus-5-5"] if self.model.startswith("claude") else (0.5, 1.0))
         return round((self.input_tokens * inp + self.output_tokens * out) / 1_000_000, 6)
 
     def add(self, usage) -> None:

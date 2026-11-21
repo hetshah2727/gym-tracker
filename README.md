@@ -95,10 +95,12 @@ All integrations are optional. When one is not configured it runs in **dev mode*
 
 | Service | Env vars | Notes |
 |---|---|---|
+| Groq (default text model) | `GROQ_API_KEY`, `GROQ_MODEL`, `LLM_PROVIDER` | Agents' tool loop (OpenAI-compatible tool calling), content drafts and diet plans. `LLM_PROVIDER=auto` uses Groq when its key is set, else Claude. Small accounts have an 8K tokens/minute limit; requests are sized for it and fall back to the rule engine when rate-limited. |
+| Gemini | `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_IMAGE_MODEL` | Google/social post drafts, post pictures (`POST /local/posts/image`, needs billing on the key) and live Google Search checks for AI visibility (`POST /ai-search/visibility/queries/{id}/check`). |
 | Claude | `ANTHROPIC_API_KEY`, `AI_MODEL` | `integrations/ai/diet_generator.py`. Calorie/macro targets are computed in code (Mifflin-St Jeor), Claude builds the meals as validated structured output. Server-side refusal fallback is enabled. |
 | WhatsApp Cloud API | `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN` | Business-initiated messages need approved templates in production; see `send_template()`. |
 | AI voice calls | `VOICE_API_URL`, `VOICE_API_KEY` | Provider-agnostic `POST /calls`; adapt the payload in `integrations/voice/client.py`. |
-| Razorpay | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | Webhook: `POST /api/v1/payments/webhooks/razorpay` (`payment.captured`, `order.paid`). |
+| Razorpay | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | Webhook: `POST /api/v1/payments/webhooks/razorpay` (`payment.captured`, `order.paid`, `payment.failed`, `payment_link.paid`). WhatsApp reminders on *Money → Due now* carry a payment link (rzp.io) when keys are set; a paid renewal link creates the renewal automatically. |
 | n8n | `N8N_WEBHOOK_BASE_URL`, `N8N_API_KEY` | Outbound events: `member.created`, `membership.created`, `payment.paid`, `lead.created`, plus per-rule workflows. Inbound: `POST /api/v1/automation/n8n/send` with `X-N8N-Key`. |
 | Amazon Associates | `AMAZON_ASSOCIATE_TAG` | Links carry `ascsubtag=<link code>` so report rows map back to gym and trainer. |
 

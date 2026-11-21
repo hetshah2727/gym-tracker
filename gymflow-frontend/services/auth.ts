@@ -55,3 +55,8 @@ export function logout() {
   setActingGymId(null);
   window.location.href = "/login";
 }
+
+/** One-click "See a live demo gym": the API only ever issues a token for the flagged demo tenant. */
+export async function demoLogin(): Promise<User> {
+  return persist(await post<TokenResponse>("/auth/demo-login"));
+}

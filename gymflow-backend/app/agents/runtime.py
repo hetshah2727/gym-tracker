@@ -19,7 +19,7 @@ from app.core.tenant_context import get_current_gym_id
 from app.database.models import AgentConfig, AgentRun, AIConversation, AIMessage, Gym, Lead, User
 from app.database.models.enums import ConversationStatus
 from app.database.repositories.base import TenantRepository
-from app.integrations.ai import claude
+from app.integrations.ai import claude, groq, llm
 from app.modules.crm import service as crm
 from app.services import content
 
@@ -155,6 +155,7 @@ Rules:
 - Never claim Google rankings, map-pack positions or AI-assistant citations; GymFlow does not measure them.
 - Tools that send messages or run audits create a pending action that the user must confirm in GymFlow - tell them.
 - Answer first, then up to 5 short bullets with the key figures, then 1-3 next actions with their GymFlow links (href values from tools).
+- Links must be plain paths that start with /dashboard/ exactly as tools return them. Never invent URLs or HTML.
 - Plain language for a gym owner. Use markdown."""
 
 
@@ -185,13 +186,39 @@ def _claude_loop(ctx: AgentContext, history: list[dict]) -> tuple[str, claude.Us
     return "I gathered the data but ran out of steps. Please ask a more specific question.", usage
 
 
+def _groq_loop(ctx: AgentContext, history: list[dict]) -> tuple[str, claude.Usage]:
+    """Same tool loop as Claude, in the OpenAI-compatible format Groq uses."""
+    usage = claude.Usage(model=settings.GROQ_MODEL)
+    tools = [{"type": "function", "function": {"name": t.name, "description": t.description,
+                                               "parameters": t.json_schema()}} for t in tools_for(ctx)]
+    messages: list = [{"role": "system", "content": _system_prompt(ctx)}, *history]
+    for _ in range(MAX_TOOL_ROUNDS):
+        response = groq.chat(messages, tools=tools or None, max_tokens=1500)
+        groq.add_usage(usage, response)
+        msg = response["choices"][0]["message"]
+        calls = msg.get("tool_calls") or []
+        if not calls:
+            return (msg.get("content") or "").strip(), usage
+        messages.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": calls})
+        for call in calls:
+            try:
+                args = json.loads(call["function"].get("arguments") or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            out = execute(ctx, call["function"]["name"], args if isinstance(args, dict) else {})
+            messages.append({"role": "tool", "tool_call_id": call["id"],
+                             "content": json.dumps(out, default=str)[:6_000]})
+    return "I gathered the data but ran out of steps. Please ask a more specific question.", usage
+
+
 def run_agent(db: Session, *, agent_key: str, message: str, channel: str, user: User | None = None,
               conversation: AIConversation | None = None, provider_message_id: str | None = None) -> AgentReply:
     started = time.monotonic()
     gym = db.get(Gym, get_current_gym_id())
     conv = conversation or get_or_create_conversation(db, agent_key=agent_key, channel=channel, user=user)
     ctx = AgentContext(db=db, agent_key=agent_key, user=user, conversation=conv, channel=channel)
-    reply = AgentReply(text=None, status="ok", engine="claude" if claude.is_configured() else "rules",
+    engine = llm.engine()
+    reply = AgentReply(text=None, status="ok", engine=engine or "rules",
                        conversation_id=str(conv.id), agent_key=agent_key)
 
     TenantRepository(AIMessage, db).add(conversation_id=conv.id, role="user", content=message[:4000], data={},
@@ -225,7 +252,9 @@ def run_agent(db: Session, *, agent_key: str, message: str, channel: str, user: 
             crm.create_task(db, title="Reply to after-hours chat", lead_id=conv.lead_id, source="agent",
                             dedup_key=f"after_hours:{conv.id}:{date.today()}")
             db.commit()
-        elif claude.is_configured():
+        elif engine == "groq":
+            reply.text, usage = _groq_loop(ctx, _history(db, conv))
+        elif engine == "claude":
             reply.text, usage = _claude_loop(ctx, _history(db, conv))
         elif AGENTS[agent_key].public:
             reply.text = rules.sales_reply(ctx, message)
@@ -264,9 +293,9 @@ def _log(db: Session, ctx: AgentContext, reply: AgentReply, started: float, *, s
     usage = usage or claude.Usage(model=settings.AI_MODEL)
     TenantRepository(AgentRun, db).add(
         agent_key=ctx.agent_key, user_id=ctx.user.id if ctx.user else None, conversation_id=ctx.conversation.id
-        if ctx.conversation else None, engine=reply.engine, model=settings.AI_MODEL if reply.engine == "claude" else None,
+        if ctx.conversation else None, engine=reply.engine, model=llm.model_name(reply.engine) if reply.engine != "rules" else None,
         status=status, tools_called=ctx.tools_called, input_tokens=usage.input_tokens,
-        output_tokens=usage.output_tokens, cost_usd=usage.cost_usd if reply.engine == "claude" else 0,
+        output_tokens=usage.output_tokens, cost_usd=usage.cost_usd if reply.engine != "rules" else 0,
         duration_ms=int((time.monotonic() - started) * 1000), error=error, created_at=datetime.now(timezone.utc))
     db.commit()
 

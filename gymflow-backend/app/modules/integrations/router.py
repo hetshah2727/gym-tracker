@@ -16,7 +16,7 @@ from app.database.models import Gym, IntegrationConnection, Notification, User
 from app.database.models.enums import Channel, ConnectionStatus, NotificationStatus, Role
 from app.database.repositories.base import TenantRepository
 from app.database.session import get_db
-from app.integrations.ai import claude
+from app.integrations.ai import gemini, llm
 from app.integrations.payments import razorpay
 from app.integrations.voice import client as voice
 from app.integrations.whatsapp import client as whatsapp
@@ -74,9 +74,13 @@ def health(db: Session = Depends(get_db), _=Depends(staff)):
          "detail": ("Orders get fake ids; online payments can't be confirmed." if not razorpay.is_configured()
                     else "Webhook secret " + ("set" if settings.RAZORPAY_WEBHOOK_SECRET else "MISSING"))
          + " Only signed webhooks mark online payments paid."},
-        {"key": "ai", "name": "Claude AI", "state": _state(claude.is_configured()),
-         "detail": settings.AI_MODEL if claude.is_configured() else
+        {"key": "ai", "name": "AI replies & drafts" + (f" ({llm.engine().title()})" if llm.is_configured() else ""),
+         "state": _state(llm.is_configured()),
+         "detail": llm.model_name() if llm.is_configured() else
          "Agents use the rule-based engine; content uses templates."},
+        {"key": "gemini", "name": "Gemini (posts, images & Google Search)", "state": _state(gemini.is_configured()),
+         "detail": f"{settings.GEMINI_MODEL} · images {settings.GEMINI_IMAGE_MODEL}" if gemini.is_configured() else
+         "Posts use the main AI model or templates; images and live search are off."},
         {"key": "n8n", "name": "n8n (optional automations)",
          "state": "configured_not_tested" if settings.N8N_WEBHOOK_BASE_URL else "not_configured",
          "detail": "Core workflows run inside GymFlow; n8n only receives events."},

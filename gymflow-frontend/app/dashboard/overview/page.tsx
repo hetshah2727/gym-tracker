@@ -1,127 +1,204 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
+import { ArrowRight, ArrowUpRight, CheckCircle2, Circle, MessageSquareText } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { HBars, RevenueBars } from "@/components/charts/Charts";
-import { ActionList, RecommendationList, type Action, type Recommendation } from "@/components/growth/Lists";
-import { Kpi, Note, SourceBadge, percent } from "@/components/shared/growth";
-import { Button, Card, EmptyState, ErrorNote, Input, Loading, PageHeader } from "@/components/shared/ui";
+import { DueRow, type DueList } from "@/components/money/DueRow";
+import type { Action } from "@/components/growth/Lists";
+import { Card, ErrorNote, InfoTip, Input, Skeleton } from "@/components/shared/ui";
 import { useApi } from "@/hooks/useApi";
-import { formatCurrency, formatDate, humanize } from "@/lib/utils";
+import { cn, firstName, formatCompact, formatCurrency, greeting } from "@/lib/utils";
 
 interface Dashboard {
-  period: { start: string; end: string };
   gym: { name: string; currency: string; is_demo: boolean };
-  business: Record<string, number> & { currency: string };
-  acquisition: {
-    website_seo: { score: number | null; audited_at: string | null; serious_issues: number; data_source: string | null; audit_id: string | null };
-    google_business_profile: { connection: string; completeness: number | null; snapshot_source: string | null; rating: number | null; review_count: number | null; reviews_awaiting_reply: number };
-    ai_search_readiness: { score: number | null; gaps: number | null };
-    search_console: { connection?: string; clicks?: number; impressions?: number };
-    website_enquiries: number;
-    lead_sources: Record<string, number>;
-  };
-  sales: { new_leads: number; total_enquiries: number; contacted: number; uncontacted: number; overdue_follow_ups: number; upcoming_trials: number; trial_conversion: number | null; avg_first_response_minutes: number | null };
-  recovery: { open_opportunities: number; expiring_7d: number; pending_payments: number; failed_payments: number; potential_value: number; recovered_this_month: number };
-  revenue_series: { month: string; collected: number; recovered: number }[];
+  owner_name: string;
+  subscription: { plan_name: string | null; status: string; price_monthly: number | null };
+  setup: { key: string; label: string; done: boolean; href: string }[];
+  money: { due_total: number; due_count: number; buckets: DueList["buckets"] };
+  checkins: number;
+  business: Record<string, number>;
+  recovery: { expiring_7d: number };
   actions: Action[];
-  recommendations: Recommendation[];
 }
 
-const PROMPTS = ["Analyze my gym this month", "How can I get more local enquiries?", "Show my SEO issues",
-  "Which leads should I contact today?", "Which memberships expire this week?", "How much revenue is outstanding?",
-  "Which marketing sources generate paying members?", "Give me a seven-day growth plan"];
+// Money actions are shown person-by-person from the due list, so they're skipped in the generic list.
+const MONEY_ACTIONS = new Set(["renewals", "payments"]);
+const SUGGESTIONS = ["Who hasn't come in 2 weeks?", "How much did I collect this month?", "Which enquiries should I call today?"];
 
-export default function OverviewPage() {
+function Hero({ d }: { d: Dashboard }) {
+  const cur = d.gym.currency;
+  const recovered = d.business.recovered_revenue ?? 0;
+  const price = d.subscription.price_monthly;
+  const multiple = price && recovered > 0 ? recovered / price : null;
+  const overdue = d.money.buckets.overdue;
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <Link href="/dashboard/money" className="card group relative overflow-hidden p-6 transition hover:shadow-soft">
+        <p className="text-sm font-medium text-muted">Waiting to be collected</p>
+        <p className="num mt-2 font-display text-4xl font-extrabold sm:text-5xl">{formatCurrency(d.money.due_total, cur)}</p>
+        <p className="mt-2 text-sm text-muted">
+          {d.money.due_count === 0 ? "Nobody owes you anything right now." : <>
+            {d.money.due_count} {d.money.due_count === 1 ? "person" : "people"}
+            {overdue.count > 0 && <> · <span className="font-semibold text-danger">{overdue.count} late</span></>}
+            {d.money.buckets.this_week.count > 0 && <> · {d.money.buckets.this_week.count} ending this week</>}
+          </>}
+        </p>
+        <span className="mt-5 inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-brand-fg transition group-hover:bg-brand/90">
+          See who owes <ArrowRight className="h-4 w-4" />
+        </span>
+      </Link>
+
+      <div className="card relative overflow-hidden bg-money/[0.06] p-6">
+        <p className="text-sm font-medium text-muted">Brought back by GymFlow this month</p>
+        <p className="num mt-2 font-display text-4xl font-extrabold text-money sm:text-5xl">{formatCurrency(recovered, cur)}</p>
+        {multiple && multiple >= 1 ? (
+          <p className="mt-2 text-sm">
+            That&apos;s <span className="font-bold text-money">{multiple >= 10 ? Math.round(multiple) : multiple.toFixed(1)}×</span> what you pay for GymFlow ({formatCurrency(price, cur)}/month).
+          </p>
+        ) : (
+          <p className="mt-2 text-sm text-muted">
+            {recovered > 0 ? "Money from renewals and late fees collected after a reminder." : "As members renew and pay late fees after a reminder, it adds up here."}
+          </p>
+        )}
+        <div className="mt-5">
+          <InfoTip>
+            Counted only when a member who was due, late or whose membership had ended actually pays – each payment once.
+            Estimates and unpaid amounts are never included.
+          </InfoTip>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Setup({ steps }: { steps: Dashboard["setup"] }) {
+  const done = steps.filter((s) => s.done).length;
+  if (done === steps.length) return null;
+  return (
+    <Card className="mt-6">
+      <div className="flex items-center justify-between gap-4 px-5 pt-4">
+        <div>
+          <h2 className="font-display font-bold">Finish setting up your gym</h2>
+          <p className="text-xs text-muted">{done} of {steps.length} done · takes about 10 minutes</p>
+        </div>
+        <div className="h-2 w-28 overflow-hidden rounded-full bg-surface-2" aria-hidden>
+          <div className="h-full rounded-full bg-money" style={{ width: `${(done / steps.length) * 100}%` }} />
+        </div>
+      </div>
+      <ul className="grid gap-x-6 p-3 sm:grid-cols-2">
+        {steps.map((s) => (
+          <li key={s.key}>
+            <Link href={s.href} className={cn("flex items-center gap-2.5 rounded-xl px-2 py-2 text-sm hover:bg-surface-2", s.done && "text-muted line-through")}>
+              {s.done ? <CheckCircle2 className="h-4 w-4 text-money" /> : <Circle className="h-4 w-4 text-muted" />} {s.label}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+export default function TodayPage() {
   const { data: d, error, loading } = useApi<Dashboard>("/growth/dashboard");
+  const due = useApi<DueList>("/recovery/due");
   const router = useRouter();
   const [ask, setAsk] = useState("");
-  if (loading) return <Loading />;
-  if (error || !d) return <ErrorNote message={error} />;
-  const b = d.business, a = d.acquisition, s = d.sales, r = d.recovery, cur = d.gym.currency;
   const go = (q: string) => router.push(`/dashboard/assistant?q=${encodeURIComponent(q)}`);
-  const sources = Object.entries(a.lead_sources).sort((x, y) => y[1] - x[1]).map(([k, v]) => ({ label: humanize(k), value: v }));
+
+  if (error) return <ErrorNote message={error} />;
+  const cur = d?.gym.currency ?? "INR";
+  const people = (due.data?.items ?? []).filter((i) => i.bucket !== "later").slice(0, 5);
+  const otherActions = (d?.actions ?? []).filter((a) => !MONEY_ACTIONS.has(a.key) || due.error);
+  const remaining = people.length + otherActions.length;
+  const b = d?.business ?? {};
 
   return (
     <>
-      <PageHeader title={`Good to see you, ${d.gym.name}`} description={`This month so far (${formatDate(d.period.start)} – ${formatDate(d.period.end)}). Every number below comes from your records.`}
-        actions={d.gym.is_demo ? <SourceBadge source="demo_simulated" /> : undefined} />
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <p className="text-sm text-muted">{new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</p>
+          <h1 className="font-display text-2xl font-bold tracking-tight sm:text-3xl">
+            {greeting()}{d?.owner_name ? `, ${firstName(d.owner_name)}` : ""}
+          </h1>
+        </div>
+        {d?.gym.is_demo && <span className="rounded-full bg-warning/10 px-3 py-1 text-xs font-semibold text-warning">Sample gym · demo data</span>}
+      </div>
 
-      <section aria-label="Business overview" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="Active members" value={b.active_members} hint={`${b.inactive_or_expired_members} inactive or expired`} href="/dashboard/members" />
-        <Kpi label="New leads" value={b.new_leads} hint={`${s.uncontacted} still uncontacted`} href="/dashboard/leads" tone={s.uncontacted ? "warning" : undefined} />
-        <Kpi label="Trials scheduled" value={b.trials_scheduled} hint="Upcoming booked trials" href="/dashboard/trials" />
-        <Kpi label="New memberships" value={b.new_memberships} hint="Including renewals" href="/dashboard/memberships" />
-        <Kpi label="Membership revenue" value={formatCurrency(b.membership_revenue, cur)} hint="Collected (paid) this month" href="/dashboard/revenue" tone="brand" />
-        <Kpi label="Outstanding payments" value={formatCurrency(b.outstanding, cur)} hint={`${b.outstanding_count} unpaid records`} href="/dashboard/recovery?tab=outstanding" tone={b.outstanding ? "danger" : undefined} />
-        <Kpi label="Upcoming renewals" value={b.upcoming_renewals_30d} hint="Ending in the next 30 days" href="/dashboard/recovery" />
-        <Kpi label="Recovered revenue" value={formatCurrency(b.recovered_revenue, cur)} hint="Backed by paid payments" href="/dashboard/recovery?tab=history" tone="brand" />
-      </section>
+      {loading || !d ? (
+        <div className="grid gap-4 md:grid-cols-2"><Skeleton className="h-52" /><Skeleton className="h-52" /></div>
+      ) : <Hero d={d} />}
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-5">
-        <Card title="Today's recommended actions" className="lg:col-span-3" actions={<Link href="/dashboard/actions" className="text-xs text-brand">All actions</Link>}>
-          <ActionList actions={d.actions.slice(0, 7)} />
-        </Card>
-        <Card title="AI business analyst" className="lg:col-span-2">
-          <div className="p-4">
-            <form onSubmit={(e) => { e.preventDefault(); if (ask.trim()) go(ask); }} className="flex gap-2">
-              <Input value={ask} onChange={(e) => setAsk(e.target.value)} placeholder="Ask about your gym…" aria-label="Ask the business analyst" />
-              <Button type="submit" aria-label="Ask"><Sparkles className="h-4 w-4" /></Button>
-            </form>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {PROMPTS.map((p) => (
-                <button key={p} onClick={() => go(p)} className="rounded-full border border-border px-2.5 py-1 text-xs text-muted hover:border-brand/50 hover:text-fg">{p}</button>
-              ))}
-            </div>
+      {d && !d.gym.is_demo && <Setup steps={d.setup} />}
+
+      <Card className="mt-6">
+        <div className="flex items-center justify-between px-5 pb-1 pt-4">
+          <h2 className="font-display text-lg font-bold">Do these today</h2>
+          {!loading && <span className="text-xs text-muted">{remaining ? `${remaining} to do` : ""}</span>}
+        </div>
+        {loading || due.loading ? (
+          <div className="space-y-2 p-4"><Skeleton className="h-14" /><Skeleton className="h-14" /><Skeleton className="h-14" /></div>
+        ) : remaining === 0 ? (
+          <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
+            <CheckCircle2 className="h-10 w-10 text-money" />
+            <p className="font-display font-semibold">All done for today</p>
+            <p className="text-sm text-muted">Nobody is late and every enquiry has a reply. Nice work.</p>
           </div>
-        </Card>
-      </div>
+        ) : (
+          <ul className="divide-y divide-border/60">
+            {people.map((item) => <DueRow key={item.id} item={item} currency={cur} onDone={due.reload} paymentLinks={!!due.data?.payment_links} />)}
+            {otherActions.map((a) => (
+              <li key={a.key}>
+                <Link href={a.href} className="flex items-center gap-3 px-4 py-3.5 hover:bg-surface-2 sm:px-5">
+                  <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", a.priority === "high" ? "bg-danger" : a.priority === "medium" ? "bg-warning" : "bg-muted/50")} aria-hidden />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold">{a.title}</p>
+                    <p className="truncate text-xs text-muted">{a.detail}</p>
+                  </div>
+                  <ArrowRight className="h-4 w-4 shrink-0 text-muted" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+        {(due.data?.count ?? 0) > people.length && (
+          <Link href="/dashboard/money" className="block border-t border-border/60 px-5 py-3 text-sm font-semibold text-brand hover:bg-surface-2">
+            See all {due.data?.count} people who owe money →
+          </Link>
+        )}
+      </Card>
 
-      <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-muted">Acquisition</h2>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="Website SEO score" value={a.website_seo.score ?? "—"} hint={a.website_seo.audited_at ? <>{a.website_seo.serious_issues} serious issues · {a.website_seo.data_source === "demo_simulated" ? "demo data" : formatDate(a.website_seo.audited_at)}</> : "No audit yet"} href="/dashboard/seo" />
-        <Kpi label="Google Business Profile" value={a.google_business_profile.completeness != null ? `${a.google_business_profile.completeness}%` : humanize(a.google_business_profile.connection)}
-          hint={a.google_business_profile.completeness != null ? `Completeness · ${a.google_business_profile.connection === "connected" ? "connected" : `${humanize(a.google_business_profile.snapshot_source)} data`}` : "Connect to audit your profile"} href="/dashboard/local" />
-        <Kpi label="AI-search readiness" value={a.ai_search_readiness.score ?? "—"} hint={a.ai_search_readiness.score != null ? `${a.ai_search_readiness.gaps} gaps · GymFlow checklist` : "Not checked yet"} href="/dashboard/ai-search" />
-        <Kpi label="Website enquiries" value={a.website_enquiries} hint="Website, chat, landing pages, search, Maps link" href="/dashboard/lead-sources" />
-      </div>
-      <div className="mt-4 grid gap-4 lg:grid-cols-5">
-        <Card title="Lead sources this month" className="lg:col-span-2">
-          <div className="p-4">{sources.length ? <HBars data={sources} valueLabel="Enquiries" /> : <EmptyState title="No enquiries yet" />}</div>
-        </Card>
-        <Card title="Revenue: collected vs recovered (6 months)" className="lg:col-span-3">
-          <div className="p-4"><RevenueBars data={d.revenue_series} /></div>
-        </Card>
-      </div>
-      {a.search_console.connection && a.search_console.connection !== "connected" && (
-        <Note className="mt-4">Search Console is not connected, so clicks and impressions are not shown. <Link href="/dashboard/integrations" className="underline">Connect it</Link> – GymFlow never estimates these numbers.</Note>
+      {d && (
+        <section aria-label="This month" className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {[
+            { label: "Active members", value: b.active_members, href: "/dashboard/members?status=active" },
+            { label: "New joins this month", value: b.new_memberships, href: "/dashboard/members" },
+            { label: "Collected this month", value: formatCompact(b.membership_revenue, cur), href: "/dashboard/revenue", money: true },
+            { label: "Check-ins this month", value: d.checkins, href: "/dashboard/attendance" },
+          ].map((s) => (
+            <Link key={s.label} href={s.href} className="card group p-4 transition hover:shadow-soft">
+              <p className="flex items-center justify-between text-xs text-muted">{s.label}<ArrowUpRight className="h-3.5 w-3.5 opacity-0 transition group-hover:opacity-100" /></p>
+              <p className={cn("num mt-1 font-display text-2xl font-bold", s.money && "text-money")}>{s.value ?? "—"}</p>
+            </Link>
+          ))}
+        </section>
       )}
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">Sales</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <Kpi label="Contacted" value={s.contacted} hint={`of ${s.total_enquiries} enquiries`} href="/dashboard/pipeline" />
-            <Kpi label="Uncontacted" value={s.uncontacted} href="/dashboard/leads?status=new" tone={s.uncontacted ? "warning" : undefined} />
-            <Kpi label="Overdue follow-ups" value={s.overdue_follow_ups} href="/dashboard/follow-ups?due=overdue" tone={s.overdue_follow_ups ? "danger" : undefined} />
-            <Kpi label="Trial → member" value={percent(s.trial_conversion)} hint={`${s.upcoming_trials} upcoming trials`} href="/dashboard/trials?tab=conversion" />
-          </div>
-        </section>
-        <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">Recovery</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <Kpi label="Expiring in 7 days" value={r.expiring_7d} href="/dashboard/recovery" />
-            <Kpi label="Pending payments" value={r.pending_payments} href="/dashboard/recovery?tab=outstanding" />
-            <Kpi label="Failed payments" value={r.failed_payments} href="/dashboard/recovery?tab=failed" tone={r.failed_payments ? "danger" : undefined} />
-            <Kpi label="Open opportunities" value={r.open_opportunities} hint={`~${formatCurrency(r.potential_value, cur)} potential (estimate)`} href="/dashboard/recovery?tab=opportunities" />
-          </div>
-        </section>
-      </div>
-
-      <Card title="Growth recommendations" className="mt-6" actions={<Link href="/dashboard/assistant" className="text-xs text-brand">Ask the analyst</Link>}>
-        <RecommendationList items={d.recommendations} currency={cur} />
+      <Card className="mt-6 p-5">
+        <form onSubmit={(e) => { e.preventDefault(); if (ask.trim()) go(ask); }} className="flex items-center gap-3">
+          <MessageSquareText className="hidden h-5 w-5 shrink-0 text-brand sm:block" />
+          <Input value={ask} onChange={(e) => setAsk(e.target.value)} placeholder="Ask anything about your gym…" aria-label="Ask GymFlow" className="flex-1" />
+          <button type="submit" className="rounded-xl bg-fg px-4 py-2.5 text-sm font-semibold text-bg">Ask</button>
+        </form>
+        <p className="mt-3 text-xs text-muted">
+          Try:{" "}
+          {SUGGESTIONS.map((q, i) => (
+            <span key={q}>
+              <button onClick={() => go(q)} className="underline decoration-dotted underline-offset-2 hover:text-fg">{q}</button>
+              {i < SUGGESTIONS.length - 1 && " · "}
+            </span>
+          ))}
+        </p>
       </Card>
     </>
   );

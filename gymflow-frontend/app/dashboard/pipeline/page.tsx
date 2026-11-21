@@ -3,7 +3,7 @@
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { Search } from "lucide-react";
 import { useState } from "react";
-import { LeadDrawer, stageLabel, type LeadRow } from "@/components/growth/LeadDrawer";
+import { LeadDrawer, heat, stageLabel, type LeadRow } from "@/components/growth/LeadDrawer";
 import { ConfirmDialog, FeatureGate, useAction } from "@/components/shared/growth";
 import { ErrorNote, Input, Loading, PageHeader } from "@/components/shared/ui";
 import { useApi } from "@/hooks/useApi";
@@ -19,7 +19,7 @@ function Card({ lead, onOpen }: { lead: LeadRow; onOpen: () => void }) {
       style={transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : undefined}
       className={`cursor-grab rounded-lg border border-border bg-surface p-2.5 text-xs shadow-sm ${isDragging ? "z-10 opacity-80" : ""}`}>
       <p className="truncate text-sm font-medium">{lead.name}</p>
-      <p className="mt-0.5 text-muted">{humanize(lead.source)} · score {lead.score}</p>
+      <p className="mt-0.5 text-muted">{humanize(lead.source)} · {heat(lead.score).label}</p>
       {!lead.first_response_at && lead.status === "new" && <p className="mt-1 text-warning">No response yet</p>}
     </div>
   );

@@ -5,14 +5,19 @@ from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core import entitlements
 from app.core.entitlements import gym_feature
 from app.core.permissions import GYM_STAFF, tenant_user
 from app.core.tenant_context import get_current_gym_id
-from app.database.models import EventLog, Gym, GrowthReport
-from app.database.models.enums import Role
+from app.database.models import (
+    Attendance, EventLog, Gym, GrowthReport, IntegrationConnection, Lead, Member, MembershipPlan, RecoveryOpportunity,
+    SubscriptionPlan, Trainer, User, Website,
+)
+from app.database.models.enums import OPEN_OPPORTUNITY_STATUSES, ConnectionStatus, LeadStatus, Role
+from app.modules.recovery import service as recovery_service
 from app.database.repositories.base import TenantRepository
 from app.database.session import get_db
 from app.modules.common import get_or_404
@@ -29,15 +34,51 @@ def _range(days: int | None) -> tuple[date, date]:
     return metrics.month_range()
 
 
+def _subscription(db: Session) -> dict:
+    ent = entitlements.resolve(db)
+    plan = db.scalar(select(SubscriptionPlan).where(SubscriptionPlan.code == ent.plan_code)) if ent.plan_code else None
+    return {"plan_name": ent.plan_name, "status": ent.status,
+            "price_monthly": float(plan.price_monthly) if plan else None}
+
+
+def _setup(db: Session, gym: Gym) -> list[dict]:
+    """Owner onboarding checklist - each step is derived from real data, never ticked by hand."""
+    wa = TenantRepository(IntegrationConnection, db).first(IntegrationConnection.provider == "whatsapp")
+    return [
+        {"key": "profile", "label": "Add your gym's phone and address", "done": bool(gym.phone and gym.address),
+         "href": "/dashboard/settings"},
+        {"key": "plans", "label": "Set your membership plans and prices",
+         "done": TenantRepository(MembershipPlan, db).count() > 0, "href": "/dashboard/memberships"},
+        {"key": "members", "label": "Add or import your members", "done": TenantRepository(Member, db).count() > 0,
+         "href": "/dashboard/members"},
+        {"key": "staff", "label": "Add your trainers and front-desk staff",
+         "done": TenantRepository(Trainer, db).count() > 0, "href": "/dashboard/trainers"},
+        {"key": "whatsapp", "label": "Connect WhatsApp for automatic reminders",
+         "done": bool(wa and wa.status == ConnectionStatus.CONNECTED), "href": "/dashboard/integrations?tab=whatsapp"},
+        {"key": "website", "label": "Publish your gym website",
+         "done": TenantRepository(Website, db).count(Website.is_published.is_(True)) > 0,
+         "href": "/dashboard/website-builder"},
+    ]
+
+
 @router.get("/dashboard")
-def dashboard(days: int | None = Query(None, ge=1, le=366), db: Session = Depends(get_db), _=Depends(staff)):
+def dashboard(days: int | None = Query(None, ge=1, le=366), db: Session = Depends(get_db),
+              user: User = Depends(staff)):
     start, end = _range(days)
     gym = db.get(Gym, get_current_gym_id())
     la = metrics.lead_analytics(db, start, end)
     ta = metrics.trial_analytics(db, start, end)
+    lo = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
+    hi = datetime.combine(end + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+    due = recovery_service.due_list(db)
     return {
         "period": {"start": start.isoformat(), "end": end.isoformat()},
         "gym": {"name": gym.name, "currency": gym.currency, "is_demo": bool((gym.settings or {}).get("is_demo"))},
+        "owner_name": user.full_name,
+        "subscription": _subscription(db),
+        "setup": _setup(db, gym),
+        "money": {"due_total": due["total"], "due_count": due["count"], "buckets": due["buckets"]},
+        "checkins": TenantRepository(Attendance, db).count(Attendance.check_in_at >= lo, Attendance.check_in_at < hi),
         "business": metrics.business_overview(db, start, end),
         "acquisition": metrics.acquisition(db, start, end),
         "sales": {"new_leads": la["new"], "total_enquiries": la["total_enquiries"], "contacted": la["contacted"],
@@ -49,6 +90,16 @@ def dashboard(days: int | None = Query(None, ge=1, le=366), db: Session = Depend
         "actions": metrics.todays_actions(db),
         "recommendations": insights.recommendations(db)[:6],
     }
+
+
+@router.get("/badges")
+def badges(db: Session = Depends(get_db), _=Depends(staff)):
+    """Small counts for the navigation: people who owe money, enquiries nobody has replied to."""
+    due = TenantRepository(RecoveryOpportunity, db).count(
+        RecoveryOpportunity.type.in_(recovery_service.MONEY_TYPES),
+        RecoveryOpportunity.status.in_(OPEN_OPPORTUNITY_STATUSES))
+    unreplied = TenantRepository(Lead, db).count(Lead.status == LeadStatus.NEW, Lead.first_response_at.is_(None))
+    return {"money": due, "enquiries": unreplied}
 
 
 @router.get("/actions")
