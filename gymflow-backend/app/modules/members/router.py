@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from datetime import date
 
 from sqlalchemy import func, or_, select
@@ -145,3 +145,63 @@ def grant_portal_access(member_id: uuid.UUID, data: PortalAccessRequest, db: Ses
     )
     repo.update(member, {"user_id": user.id, "email": member.email or user.email})
     return user
+
+
+# ---------------------------------------------------------------- import from Excel / CSV
+
+IMPORT_TEMPLATE = ("Name,Phone,Email,Gender,Plan,Joining date,Expiry date,Paid\n"
+                   "Amit Shah,9824012345,amit@example.com,Male,Monthly,01/11/2026,30/11/2026,Yes\n"
+                   "Priya Kapoor,9824098765,,Female,Quarterly,15/09/2026,13/12/2026,No\n")
+
+
+@router.get("/import/template.csv")
+def import_template(_=Depends(tenant_user(*GYM_STAFF))):
+    from fastapi.responses import Response
+
+    return Response(IMPORT_TEMPLATE, media_type="text/csv",
+                    headers={"Content-Disposition": 'attachment; filename="gymflow-members-template.csv"'})
+
+
+@router.post("/import")
+async def import_members(file: UploadFile = File(...), preview: bool = Query(True),
+                         db: Session = Depends(get_db), _=Depends(tenant_user(*GYM_STAFF))):
+    """Preview (default) or import members from an Excel/CSV file. Re-running never duplicates a phone number."""
+    from app.modules.members import importer
+
+    data = await file.read()
+    if len(data) > 5_000_000:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "File is too large (max 5 MB)")
+    try:
+        rows = importer.read_rows(file.filename or "", data)
+    except importer.ImportError_ as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+    return {"preview": preview, **importer.run(db, rows, commit=not preview)}
+
+
+@router.get("/{member_id}/timeline")
+def member_timeline(member_id: uuid.UUID, db: Session = Depends(get_db), _=Depends(tenant_user(*GYM_STAFF))):
+    """Everything about one member on one screen: current plan, money, visits and history."""
+    from datetime import datetime, timedelta, timezone
+
+    member = get_or_404(TenantRepository(Member, db), member_id, "Member")
+    plans = {p.id: p.name for p in TenantRepository(MembershipPlan, db).list(limit=500)}
+    memberships = TenantRepository(Membership, db).list(Membership.member_id == member.id, limit=50,
+                                                        order_by=Membership.end_date.desc())
+    payments = TenantRepository(Payment, db).list(Payment.member_id == member.id, limit=50,
+                                                  order_by=Payment.created_at.desc())
+    since = datetime.now(timezone.utc) - timedelta(days=30)
+    visits = TenantRepository(Attendance, db).list(Attendance.member_id == member.id, limit=60,
+                                                   order_by=Attendance.check_in_at.desc())
+    return {
+        "member": _with_status(db, [member])[0].model_dump(mode="json"),
+        "memberships": [{"id": str(m.id), "plan": plans.get(m.plan_id), "plan_id": str(m.plan_id) if m.plan_id else None,
+                         "start_date": m.start_date.isoformat(), "end_date": m.end_date.isoformat(),
+                         "amount": float(m.amount), "status": m.status.value} for m in memberships],
+        "payments": [{"id": str(p.id), "amount": float(p.amount), "status": p.status.value,
+                      "method": p.method.value if p.method else None,
+                      "due_date": p.due_date.isoformat() if p.due_date else None,
+                      "paid_at": p.paid_at.isoformat() if p.paid_at else None} for p in payments],
+        "visits": {"last_30_days": sum(1 for v in visits if (v.check_in_at if v.check_in_at.tzinfo else
+                                                              v.check_in_at.replace(tzinfo=timezone.utc)) >= since),
+                   "recent": [v.check_in_at.isoformat() for v in visits[:10]]},
+    }

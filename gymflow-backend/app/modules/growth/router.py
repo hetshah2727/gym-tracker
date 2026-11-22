@@ -92,6 +92,26 @@ def dashboard(days: int | None = Query(None, ge=1, le=366), db: Session = Depend
     }
 
 
+@router.get("/owner-report")
+def owner_report_view(month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"), db: Session = Depends(get_db),
+                      _=Depends(gym_feature("basic_reports", *GYM_STAFF))):
+    """Last month's (or ``month``'s) owner summary, with WhatsApp-ready text."""
+    from app.modules.growth import owner_report
+
+    return owner_report.build(db, month)
+
+
+@router.post("/owner-report/email")
+def owner_report_email(month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"), db: Session = Depends(get_db),
+                       _=Depends(tenant_user(Role.GYM_OWNER))):
+    from app.modules.growth import owner_report
+    from app.services import email
+
+    if not email.is_configured():
+        return {"sent": 0, "detail": "Email isn't set up yet. Share it on WhatsApp instead."}
+    return {"sent": owner_report.email_owners(db, owner_report.build(db, month))}
+
+
 @router.get("/badges")
 def badges(db: Session = Depends(get_db), _=Depends(staff)):
     """Small counts for the navigation: people who owe money, enquiries nobody has replied to."""

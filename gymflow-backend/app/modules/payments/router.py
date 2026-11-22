@@ -134,6 +134,54 @@ def create_checkout(payment_id: uuid.UUID, db: Session = Depends(get_db), _=Depe
                        key_id=settings.RAZORPAY_KEY_ID)
 
 
+SUBSCRIPTION_EVENTS = ("subscription.activated", "subscription.charged", "subscription.halted",
+                       "subscription.cancelled", "subscription.completed")
+
+
+def _saas_subscription_event(db: Session, kind: str, event: dict, event_id: str | None) -> dict:
+    """GymFlow's own billing: Razorpay subscription events switch the gym's plan on, pause it or end it."""
+    from app.database.models import GymSubscription, SubscriptionPlan
+    from app.database.models.enums import SubscriptionStatus
+    from app.modules.subscriptions.service import log_event
+
+    entity = ((event.get("payload") or {}).get("subscription") or {}).get("entity") or {}
+    notes = entity.get("notes") or {}
+    try:
+        gym_id = uuid.UUID(notes.get("gym_id", ""))
+    except ValueError:
+        return {"status": "unknown_order"}
+    sub = db.scalar(select(GymSubscription).where(GymSubscription.gym_id == gym_id)
+                    .order_by(GymSubscription.created_at.desc()))
+    plan = db.scalar(select(SubscriptionPlan).where(SubscriptionPlan.code == notes.get("plan_code")))
+    if sub is None or plan is None:
+        return {"status": "unknown_order"}
+    try:
+        db.add(WebhookEvent(provider="razorpay", event_id=event_id or f"{kind}:{entity.get('id')}:{entity.get('paid_count')}",
+                            gym_id=gym_id, event_type=kind))
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        return {"status": "duplicate"}
+    old = db.get(SubscriptionPlan, sub.plan_id)
+    if kind in ("subscription.activated", "subscription.charged"):
+        from app.database.models import Gym
+        from app.modules.authentication.service import reward_referrer
+
+        sub.plan_id, sub.status = plan.id, SubscriptionStatus.ACTIVE
+        reward_referrer(db, db.get(Gym, gym_id))
+        sub.gateway_subscription_id = entity.get("id")
+        if entity.get("current_end"):
+            sub.current_period_end = datetime.fromtimestamp(int(entity["current_end"]), tz=timezone.utc)
+    elif kind == "subscription.halted":
+        sub.status = SubscriptionStatus.PAST_DUE
+    else:
+        sub.status = SubscriptionStatus.CANCELLED
+    log_event(db, gym_id, kind.replace(".", "_"), from_plan=old.code if old else None, to_plan=plan.code,
+              status=sub.status.value, notes=entity.get("id"))
+    db.commit()
+    return {"status": "ok"}
+
+
 def _renewal_link_paid(db: Session, ref: str, entity: dict, event_id: str) -> dict:
     """A renewal payment link was paid: create the renewal (paid online) and credit it exactly once."""
     try:
@@ -165,6 +213,8 @@ async def razorpay_webhook(request: Request, x_razorpay_signature: str | None = 
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid signature")
     event = json.loads(raw)
     kind = event.get("event")
+    if kind in SUBSCRIPTION_EVENTS:
+        return _saas_subscription_event(db, kind, event, x_razorpay_event_id)
     if kind not in ("payment.captured", "order.paid", "payment.failed", "payment_link.paid"):
         return {"status": "ignored"}
     payload = event.get("payload", {})

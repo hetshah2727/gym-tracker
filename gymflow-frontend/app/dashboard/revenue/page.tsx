@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { HBars, RevenueBars } from "@/components/charts/Charts";
+import { OwnerReport } from "@/components/growth/OwnerReport";
 import { FeatureGate, Kpi, Note, percent } from "@/components/shared/growth";
 import { Card, EmptyState, Loading, PageHeader, Select } from "@/components/shared/ui";
 import { useApi } from "@/hooks/useApi";
@@ -20,6 +21,7 @@ export default function RevenuePage() {
     <FeatureGate feature="basic_reports">
       <PageHeader title="Reports" description="Money collected, brought back by reminders, still unpaid – and what's likely next month."
         actions={<Select className="w-40" value={days} onChange={(e) => setDays(e.target.value)} options={[{ value: "", label: "This month" }, { value: "30", label: "Last 30 days" }, { value: "90", label: "Last 90 days" }, { value: "365", label: "Last 12 months" }]} />} />
+      <OwnerReport />
       {loading || !data ? <Loading /> : (() => {
         const s = data.summary;
         return <>

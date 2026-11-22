@@ -7,6 +7,7 @@ import { DueRow, sendReminder, type DueItem, type DueList } from "@/components/m
 import { FeatureGate } from "@/components/shared/growth";
 import { Button, Card, EmptyState, ErrorNote, InfoTip, Skeleton } from "@/components/shared/ui";
 import { useApi } from "@/hooks/useApi";
+import { useT } from "@/lib/i18n";
 import { formatCurrency } from "@/lib/utils";
 
 const SECTIONS: { key: DueItem["bucket"]; title: string; hint: string; tone: string }[] = [
@@ -16,6 +17,7 @@ const SECTIONS: { key: DueItem["bucket"]; title: string; hint: string; tone: str
 ];
 
 function ReminderQueue({ items, onClose, withLink }: { items: DueItem[]; onClose: () => void; withLink: boolean }) {
+  const { t } = useT();
   const [i, setI] = useState(0);
   const item = items[i];
   const next = () => setI((n) => n + 1);
@@ -41,8 +43,8 @@ function ReminderQueue({ items, onClose, withLink }: { items: DueItem[]; onClose
         <button onClick={onClose} className="rounded-lg p-1 text-muted hover:bg-surface-2" aria-label="Stop reminding"><X className="h-4 w-4" /></button>
       </div>
       <div className="mt-4 flex gap-2">
-        <Button onClick={() => { void sendReminder(item, withLink); next(); }}><MessageCircle className="h-4 w-4" /> Open WhatsApp & next</Button>
-        <Button variant="ghost" onClick={next}><SkipForward className="h-4 w-4" /> Skip</Button>
+        <Button onClick={() => { void sendReminder(item, withLink); next(); }}><MessageCircle className="h-4 w-4" /> {t("Open WhatsApp & next")}</Button>
+        <Button variant="ghost" onClick={next}><SkipForward className="h-4 w-4" /> {t("Skip")}</Button>
       </div>
     </Card>
   );
@@ -53,12 +55,13 @@ export default function MoneyPage() {
   const [queue, setQueue] = useState<DueItem[] | null>(null);
   const cur = data?.currency ?? "INR";
   const urgent = (data?.items ?? []).filter((i) => i.bucket !== "later");
+  const { t } = useT();
 
   return (
     <FeatureGate feature="recovery_center">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight sm:text-[1.7rem]">Who owes you money</h1>
+          <h1 className="font-display text-2xl font-bold tracking-tight sm:text-[1.7rem]">{t("Who owes you money")}</h1>
           {loading ? <Skeleton className="mt-2 h-10 w-56" /> : data && (
             <p className="mt-1 text-sm text-muted">
               <span className="num font-display text-3xl font-extrabold text-fg">{formatCurrency(data.total, cur)}</span>{" "}
@@ -67,7 +70,7 @@ export default function MoneyPage() {
           )}
         </div>
         {urgent.length > 0 && !queue && (
-          <Button size="lg" onClick={() => setQueue(urgent)}><MessageCircle className="h-5 w-5" /> Remind {urgent.length} on WhatsApp</Button>
+          <Button size="lg" onClick={() => setQueue(urgent)}><MessageCircle className="h-5 w-5" /> {t("Remind {n} on WhatsApp", { n: urgent.length })}</Button>
         )}
       </div>
 
@@ -76,14 +79,15 @@ export default function MoneyPage() {
       {data && data.count > 0 && (
         <p className="mb-4 text-xs text-muted">
           {data.payment_links ? "Reminders include a Razorpay link so members can pay by UPI or card – it's marked paid automatically."
-            : <>Tip: <Link href="/dashboard/integrations" className="underline">connect Razorpay</Link> to add a pay-online link to every reminder.</>}
+            : data.upi_payments ? "Reminders include a UPI pay page with your QR code. Mark people paid when the money arrives."
+            : <>Tip: add your <Link href="/dashboard/settings" className="underline">UPI ID</Link> or <Link href="/dashboard/integrations" className="underline">connect Razorpay</Link> to add a pay-online link to every reminder.</>}
         </p>
       )}
 
       {loading ? (
         <div className="space-y-3"><Skeleton className="h-16" /><Skeleton className="h-16" /><Skeleton className="h-16" /></div>
       ) : data && data.count === 0 ? (
-        <Card><EmptyState icon={<CheckCircle2 className="h-7 w-7 text-money" />} title="Nobody owes you money" description="Every fee is paid and no membership ends in the next 30 days. GymFlow checks again every day." /></Card>
+        <Card><EmptyState icon={<CheckCircle2 className="h-7 w-7 text-money" />} title={t("Nobody owes you money")} description="Every fee is paid and no membership ends in the next 30 days. GymFlow checks again every day." /></Card>
       ) : data && (
         <div className="space-y-6">
           {SECTIONS.map((s) => {
@@ -93,7 +97,7 @@ export default function MoneyPage() {
               <section key={s.key}>
                 <div className="mb-2 flex items-baseline justify-between gap-3 px-1">
                   <div>
-                    <h2 className={`font-display text-lg font-bold ${s.tone}`}>{s.title} <span className="text-sm font-medium text-muted">({items.length})</span></h2>
+                    <h2 className={`font-display text-lg font-bold ${s.tone}`}>{t(s.title)} <span className="text-sm font-medium text-muted">({items.length})</span></h2>
                     <p className="text-xs text-muted">{s.hint}</p>
                   </div>
                   <p className="num font-display font-bold">{formatCurrency(data.buckets[s.key].amount, cur)}</p>

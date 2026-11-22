@@ -39,6 +39,7 @@ export interface RegisterInput {
   password: string;
   phone?: string;
   city?: string;
+  referral_code?: string;
 }
 
 export async function register(input: RegisterInput): Promise<User> {
@@ -59,4 +60,8 @@ export function logout() {
 /** One-click "See a live demo gym": the API only ever issues a token for the flagged demo tenant. */
 export async function demoLogin(): Promise<User> {
   return persist(await post<TokenResponse>("/auth/demo-login"));
+}
+
+export async function resetPassword(token: string, password: string): Promise<User> {
+  return persist(await post<TokenResponse>("/auth/reset-password", { token, password }));
 }

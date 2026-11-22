@@ -27,12 +27,12 @@ export default function ForgotPasswordPage() {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
-        <h1 className="text-lg font-semibold">Reset your password</h1>
-        <p className="text-sm text-muted">We&apos;ll send a reset link to your email.</p>
+        <h1 className="font-display text-2xl font-bold">Reset your password</h1>
+        <p className="text-sm text-muted">We&apos;ll email you a link to choose a new one. It works for 30 minutes.</p>
       </div>
       <ErrorNote message={error} />
       {sent ? (
-        <p className="rounded-lg border border-brand/40 bg-brand/10 px-3 py-2 text-sm text-brand">{sent}</p>
+        <p className="rounded-xl border border-money/40 bg-money/10 px-3 py-2 text-sm text-money">{sent} Check your inbox (and spam folder).</p>
       ) : (
         <>
           <Field label="Email">

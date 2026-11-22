@@ -35,6 +35,8 @@ def get_current_user(
         user_id = uuid.UUID(payload["sub"])
     except (jwt.PyJWTError, KeyError, ValueError):
         raise unauthorized
+    if payload.get("purpose"):  # e.g. password-reset tokens can never be used to log in
+        raise unauthorized
     user = db.get(User, user_id)
     if user is None or not user.is_active:
         raise unauthorized

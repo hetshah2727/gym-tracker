@@ -47,9 +47,62 @@ def get_entitlements(db: Session = Depends(get_db), _=Depends(tenant_user())):
             "trial_ends_at": ent.trial_ends_at, "features": ent.features, "max_members": ent.max_members,
             "limits": ent.limits, "usage": {m: entitlements.usage(db, m) for m in ent.limits},
             "catalog": {k: {"label": label, "tier": tier} for k, (label, tier) in entitlements.FEATURES.items()},
-            "billing": {"gateway_subscriptions": False,
-                        "note": "Plan changes apply immediately; automated Razorpay subscription billing is not "
-                                "implemented yet - invoices are handled outside GymFlow."}}
+            "billing": {"gateway_subscriptions": billing_enabled(),
+                        "note": "Pay monthly by UPI, card or netbanking through Razorpay." if billing_enabled() else
+                                "Plan changes apply immediately; invoices are handled outside GymFlow."}}
+
+
+def billing_plan_id(code: str) -> str | None:
+    from app.core.config import settings
+
+    return {"starter": settings.RAZORPAY_PLAN_STARTER, "growth": settings.RAZORPAY_PLAN_GROWTH,
+            "pro": settings.RAZORPAY_PLAN_PRO}.get(code)
+
+
+def billing_enabled() -> bool:
+    from app.integrations.payments import razorpay
+
+    return razorpay.is_configured() and any(billing_plan_id(c) for c in ("starter", "growth", "pro"))
+
+
+@router.post("/checkout")
+def checkout(data: ChangePlanRequest, db: Session = Depends(get_db), user=Depends(tenant_user(Role.GYM_OWNER))):
+    """Start a Razorpay subscription for a plan. The plan switches on when Razorpay confirms the first payment."""
+    from app.core.config import settings
+    from app.integrations.payments import razorpay
+
+    plan = db.scalar(select(SubscriptionPlan).where(SubscriptionPlan.code == data.plan_code,
+                                                    SubscriptionPlan.is_active.is_(True)))
+    if plan is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
+    rp_plan = billing_plan_id(plan.code)
+    if not (razorpay.is_configured() and rp_plan):
+        return {"configured": False}
+    try:
+        sub = razorpay.create_subscription(rp_plan, notes={"gym_id": str(get_current_gym_id()), "plan_code": plan.code,
+                                                           "user_id": str(user.id)})
+    except razorpay.PaymentGatewayError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Payment gateway error: {exc}")
+    log_event(db, get_current_gym_id(), "checkout_started", to_plan=plan.code, actor_user_id=user.id,
+              notes=sub.get("id"))
+    db.commit()
+    return {"configured": True, "subscription_id": sub.get("id"), "short_url": sub.get("short_url"),
+            "key_id": settings.RAZORPAY_KEY_ID, "plan_name": plan.name, "amount": float(plan.price_monthly)}
+
+
+@router.get("/referral")
+def referral(db: Session = Depends(get_db), _=Depends(tenant_user(Role.GYM_OWNER))):
+    """The owner's invite link and how many gyms joined through it."""
+    from app.core.config import settings
+    from app.database.models import Gym
+    from app.modules.authentication.service import REFERRAL_REWARD_DAYS, REFERRAL_TRIAL_DAYS
+
+    gym = db.get(Gym, get_current_gym_id())
+    gid = str(gym.id)
+    referred = [g for g in db.scalars(select(Gym)).all() if (g.settings or {}).get("referred_by") == gid]
+    return {"code": gym.slug, "link": f"{settings.FRONTEND_URL.rstrip('/')}/register?ref={gym.slug}",
+            "joined": len(referred), "paying": sum(1 for g in referred if (g.settings or {}).get("referral_rewarded")),
+            "trial_days": REFERRAL_TRIAL_DAYS, "reward_days": REFERRAL_REWARD_DAYS}
 
 
 @router.get("/history")

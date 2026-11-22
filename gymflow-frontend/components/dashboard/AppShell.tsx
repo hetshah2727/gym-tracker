@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { areaFor, tabMatches, type Area } from "@/components/dashboard/nav";
+import { setLang, useT } from "@/lib/i18n";
 import { cn, initials } from "@/lib/utils";
 import { logout } from "@/services/auth";
 
@@ -76,6 +77,13 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const [theme, toggleTheme] = useTheme();
+  const { t, lang } = useT();
+  const langButton = (
+    <button onClick={() => setLang(lang === "hi" ? "en" : "hi")} className="rounded-lg px-1.5 py-1 text-xs font-bold text-muted hover:bg-surface-2 hover:text-fg"
+      aria-label={lang === "hi" ? "Switch to English" : "हिंदी में देखें"} title={lang === "hi" ? "English" : "हिंदी"}>
+      {lang === "hi" ? "EN" : "हिं"}
+    </button>
+  );
   const [quickOpen, setQuickOpen] = useState(false);
   const all = footerArea ? [...areas, footerArea] : areas;
   const current = areaFor(pathname, all);
@@ -91,7 +99,7 @@ export function AppShell({
         className={cn("group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[0.95rem] transition",
           active ? "bg-fg text-bg font-semibold" : "text-muted hover:bg-surface-2 hover:text-fg")}>
         <Icon className="h-[18px] w-[18px]" strokeWidth={active ? 2.4 : 2} />
-        <span className="flex-1">{area.label}</span>
+        <span className="flex-1">{t(area.label)}</span>
         <Count n={area.badge ? badges?.[area.badge] : undefined} className={active ? "bg-bg text-fg" : undefined} />
       </Link>
     );
@@ -108,12 +116,13 @@ export function AppShell({
           {SUPPORT_WHATSAPP && (
             <a href={`https://wa.me/${SUPPORT_WHATSAPP}`} target="_blank" rel="noreferrer"
               className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[0.95rem] text-muted hover:bg-surface-2 hover:text-fg">
-              <MessageCircle className="h-[18px] w-[18px]" /> Help on WhatsApp
+              <MessageCircle className="h-[18px] w-[18px]" /> {t("Help on WhatsApp")}
             </a>
           )}
           <div className="mt-2 flex items-center gap-2 rounded-xl px-2 py-2">
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-2 text-xs font-bold">{initials(userName || title)}</span>
             <span className="min-w-0 flex-1 truncate text-sm font-medium">{userName || "Account"}</span>
+            {langButton}
             <button onClick={toggleTheme} className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-fg" aria-label="Switch light or dark mode">
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
@@ -128,6 +137,7 @@ export function AppShell({
         {/* Mobile top bar */}
         <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-border/70 bg-bg/90 px-4 py-3 backdrop-blur lg:hidden">
           <div className="min-w-0 flex-1"><Logo title={title} /></div>
+          {langButton}
           <button onClick={toggleTheme} className="rounded-lg p-2 text-muted" aria-label="Switch light or dark mode">
             {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </button>
@@ -138,13 +148,13 @@ export function AppShell({
         <main className="mx-auto max-w-6xl px-4 pb-28 pt-5 sm:px-6 lg:px-10 lg:pb-12 lg:pt-8">
           {tabs.length > 1 && (
             <div className="scrollbar-none -mx-4 mb-6 flex gap-1 overflow-x-auto border-b border-border/70 px-4 sm:mx-0 sm:px-0" role="tablist" aria-label={current?.label}>
-              {tabs.map((t) => {
-                const active = tabMatches(pathname, t);
+              {tabs.map((tab) => {
+                const active = tabMatches(pathname, tab);
                 return (
-                  <Link key={t.href} href={t.href} role="tab" aria-selected={active}
+                  <Link key={tab.href} href={tab.href} role="tab" aria-selected={active}
                     className={cn("-mb-px whitespace-nowrap border-b-2 px-3 pb-2.5 pt-1 text-sm transition",
                       active ? "border-brand font-semibold text-fg" : "border-transparent text-muted hover:text-fg")}>
-                    {t.label}
+                    {t(tab.label)}
                   </Link>
                 );
               })}
@@ -165,7 +175,7 @@ export function AppShell({
               <Link key={area.key} href={area.href} aria-current={active ? "page" : undefined}
                 className={cn("relative flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px]", active ? "font-semibold text-brand" : "text-muted")}>
                 <Icon className="h-5 w-5" strokeWidth={active ? 2.4 : 2} />
-                {area.label}
+                {t(area.label)}
                 {!!n && <span className="absolute right-[calc(50%-18px)] top-1.5 h-2 w-2 rounded-full bg-brand" aria-label={`${n} waiting`} />}
               </Link>
             );
@@ -180,7 +190,7 @@ export function AppShell({
             <div className="card flex animate-rise flex-col p-1.5 shadow-soft">
               {quickActions.map((q) => (
                 <Link key={q.href} href={q.href} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium hover:bg-surface-2">
-                  <q.icon className="h-4 w-4 text-brand" /> {q.label}
+                  <q.icon className="h-4 w-4 text-brand" /> {t(q.label)}
                 </Link>
               ))}
             </div>

@@ -161,8 +161,17 @@ def due_list(db: Session, today: date | None = None, limit: int = 500) -> dict:
 
     Amounts are what the member owes or what a renewal costs (the opportunity's potential) - not revenue.
     """
+    from urllib.parse import urlencode
+
+    from app.core.config import settings
+    from app.integrations.payments import razorpay
+
     today = today or date.today()
     gym = db.get(Gym, get_current_gym_id())
+    # Without Razorpay, reminders can still carry a UPI pay page (QR + "open UPI app") for the gym's own UPI ID.
+    upi_page = None
+    if not razorpay.is_configured() and (gym.settings or {}).get("upi_id"):
+        upi_page = f"{settings.FRONTEND_URL.rstrip('/')}/pay/{gym.slug}"
     opps = TenantRepository(RecoveryOpportunity, db).list(
         RecoveryOpportunity.type.in_(MONEY_TYPES), RecoveryOpportunity.status.in_(OPEN_OPPORTUNITY_STATUSES),
         limit=limit, order_by=RecoveryOpportunity.due_date)
@@ -182,6 +191,9 @@ def due_list(db: Session, today: date | None = None, limit: int = 500) -> dict:
             days = (ms.end_date - today).days if ms else 0
             message = renewal_message(gym, member, ms, float(o.potential_revenue)) if ms else None
             kind = "renewal"
+        if upi_page and message:
+            query = urlencode({"amount": f"{float(o.potential_revenue):.0f}", "note": f"{gym.name} - {member.full_name}"[:60]})
+            message += f"\n\nPay by UPI: {upi_page}?{query}"
         bucket = "overdue" if (payment is not None and days <= 0) or days < 0 else "this_week" if days <= 7 else "later"
         items.append({
             "id": str(o.id), "kind": kind, "bucket": bucket, "member_id": str(member.id),
@@ -195,10 +207,9 @@ def due_list(db: Session, today: date | None = None, limit: int = 500) -> dict:
     items.sort(key=lambda i: (order[i["bucket"]], i["days"]))
     buckets = {b: {"count": sum(1 for i in items if i["bucket"] == b),
                    "amount": round(sum(i["amount"] for i in items if i["bucket"] == b), 2)} for b in order}
-    from app.integrations.payments import razorpay
-
     return {"currency": gym.currency, "total": round(sum(i["amount"] for i in items), 2), "count": len(items),
-            "buckets": buckets, "items": items, "payment_links": razorpay.is_configured()}
+            "buckets": buckets, "items": items, "payment_links": razorpay.is_configured(),
+            "upi_payments": upi_page is not None}
 
 
 def sync_payments(db: Session, today: date) -> int:

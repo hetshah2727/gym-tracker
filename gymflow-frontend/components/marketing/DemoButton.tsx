@@ -3,6 +3,7 @@
 import { Play } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { demoLogin, homeFor } from "@/services/auth";
 
@@ -24,6 +25,7 @@ export function DemoButton({ className, label = "See a live demo gym" }: { class
           setError(null);
           try {
             const user = await demoLogin();
+            track("demo_opened");
             router.replace(homeFor(user.role));
             router.refresh();
           } catch {

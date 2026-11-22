@@ -57,6 +57,20 @@ def create_payment_link(amount: float, reference_id: str, description: str, curr
         raise PaymentGatewayError(str(exc)) from exc
 
 
+def create_subscription(plan_id: str, notes: dict, total_count: int = 120) -> dict:
+    """Recurring monthly subscription for GymFlow's own plans (returns ``id`` and ``short_url``)."""
+    if not is_configured():
+        raise PaymentGatewayError("Razorpay is not configured")
+    try:
+        resp = httpx.post(f"{RAZORPAY_API}/subscriptions", auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET),
+                          json={"plan_id": plan_id, "total_count": total_count, "customer_notify": 1, "notes": notes},
+                          timeout=15)
+        resp.raise_for_status()
+        return resp.json()
+    except httpx.HTTPError as exc:
+        raise PaymentGatewayError(str(exc)) from exc
+
+
 def verify_webhook_signature(raw_body: bytes, signature: str | None) -> bool:
     if not settings.RAZORPAY_WEBHOOK_SECRET or not signature:
         return False

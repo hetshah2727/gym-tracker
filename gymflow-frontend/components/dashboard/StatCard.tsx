@@ -22,7 +22,7 @@ export function StatCard({
           <Icon
             className={cn(
               "h-4 w-4",
-              tone === "brand" && "text-brand",
+              tone === "brand" && "text-money",
               tone === "warning" && "text-warning",
               tone === "danger" && "text-danger",
               tone === "default" && "text-muted",
@@ -30,7 +30,7 @@ export function StatCard({
           />
         )}
       </div>
-      <p className="mt-2 text-2xl font-semibold tabular-nums tracking-tight">{value}</p>
+      <p className={cn("num mt-2 font-display text-2xl font-bold", tone === "brand" && "text-money")}>{value}</p>
       {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
     </div>
   );

@@ -1,10 +1,11 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { Check, Copy, Gift, MessageCircle } from "lucide-react";
 import { useState } from "react";
-import { ConfirmDialog, useAction, useEntitlements } from "@/components/shared/growth";
+import { ConfirmDialog, useAction, useEntitlements, useToast } from "@/components/shared/growth";
 import { Button, Card, Loading, PageHeader } from "@/components/shared/ui";
 import { useApi } from "@/hooks/useApi";
+import { track } from "@/lib/analytics";
 import { cn, formatCurrency, formatDate, formatDateTime, humanize } from "@/lib/utils";
 import { post } from "@/services/api";
 
@@ -17,7 +18,49 @@ const PITCH: Record<string, { promise: string; who: string }> = {
   pro: { promise: "Fill my gym", who: "Get found on Google, Maps and AI apps, and turn visitors into members." },
 };
 const HIDDEN = new Set(["affiliate", "voice_calls"]);
+interface Checkout { configured: boolean; subscription_id?: string; short_url?: string; key_id?: string; plan_name?: string }
+type RazorpayCtor = new (opts: Record<string, unknown>) => { open: () => void };
+
+function loadCheckout(): Promise<RazorpayCtor | null> {
+  const w = window as unknown as { Razorpay?: RazorpayCtor };
+  if (w.Razorpay) return Promise.resolve(w.Razorpay);
+  return new Promise((resolve) => {
+    const s = document.createElement("script");
+    s.src = "https://checkout.razorpay.com/v1/checkout.js";
+    s.onload = () => resolve((window as unknown as { Razorpay?: RazorpayCtor }).Razorpay ?? null);
+    s.onerror = () => resolve(null);
+    document.body.appendChild(s);
+  });
+}
+
 const USAGE_LABEL: Record<string, string> = { ai_messages: "AI replies", seo_audits: "Website checks", content_generations: "AI-written posts" };
+
+interface Referral { code: string; link: string; joined: number; paying: number; trial_days: number; reward_days: number }
+
+/** "Give a gym friend a longer trial, get a free month when they start paying." */
+function ReferralCard() {
+  const { data: r } = useApi<Referral>("/subscriptions/referral");
+  const toast = useToast();
+  if (!r) return null;
+  const text = `I use GymFlow to collect fees and renewals on WhatsApp. Try it free for ${r.trial_days} days: ${r.link}`;
+  return (
+    <Card className="mt-6 p-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-money/10 text-money"><Gift className="h-6 w-6" /></span>
+        <div className="flex-1">
+          <p className="font-display text-lg font-bold">Invite a gym owner, get a free month</p>
+          <p className="text-sm text-muted">They get a {r.trial_days}-day free trial. When they start paying, you get {r.reward_days} days free.
+            {r.joined > 0 && <> So far: <strong className="text-fg">{r.joined}</strong> joined, <strong className="text-fg">{r.paying}</strong> paying.</>}</p>
+        </div>
+        <div className="flex gap-2">
+          <a href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer"
+            className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-brand-fg"><MessageCircle className="h-4 w-4" /> Share</a>
+          <Button variant="secondary" onClick={() => { navigator.clipboard?.writeText(r.link); toast("Invite link copied"); }}><Copy className="h-4 w-4" /> Copy link</Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
 
 export default function PlanPage() {
   const { ent, reload } = useEntitlements();
@@ -25,7 +68,23 @@ export default function PlanPage() {
   const history = useApi<{ event: string; from_plan: string | null; to_plan: string | null; status: string | null; notes: string | null; at: string }[]>("/subscriptions/history");
   const [change, setChange] = useState<Plan | null>(null);
   const { busy, run } = useAction();
+  const toast = useToast();
   if (!ent) return <Loading />;
+  const online = !!ent.billing?.gateway_subscriptions;
+
+  // Razorpay subscription checkout (UPI autopay / card). The plan switches on when Razorpay confirms payment.
+  const subscribe = (p: Plan) => run("c", () => post<Checkout>("/subscriptions/checkout", { plan_code: p.code })).then(async (c) => {
+    setChange(null);
+    if (!c?.configured || !c.subscription_id) return;
+    track("checkout_started", { plan: p.code });
+    const Razorpay = await loadCheckout();
+    if (!Razorpay) { if (c.short_url) window.open(c.short_url, "_blank", "noopener"); return; }
+    new Razorpay({
+      key: c.key_id, subscription_id: c.subscription_id, name: "GymFlow", description: `${c.plan_name} plan – monthly`,
+      theme: { color: "#D9480F" },
+      handler: () => { toast("Payment received – your plan switches on in a few seconds"); setTimeout(reload, 4000); setTimeout(reload, 12000); },
+    }).open();
+  });
   const keys = Object.keys(ent.catalog).filter((k) => !HIDDEN.has(k));
   const sorted = [...(plans.data ?? [])].sort((a, b) => a.price_monthly - b.price_monthly);
 
@@ -67,6 +126,8 @@ export default function PlanPage() {
         })}
       </div>
 
+      <ReferralCard />
+
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <Card title="This month's usage">
           <ul className="divide-y divide-border/60">
@@ -91,9 +152,12 @@ export default function PlanPage() {
         </Card>
       </div>
 
-      <ConfirmDialog open={!!change} title={`Switch to ${change?.name}?`} confirmLabel="Switch plan" busy={busy === "c"}
-        message={<>Your new features switch on straight away. {formatCurrency(change?.price_monthly ?? 0)}/month plus GST – we&apos;ll send the invoice separately.</>}
-        onClose={() => setChange(null)} onConfirm={() => change && run("c", () => post("/subscriptions/change-plan", { plan_code: change.code }), "Plan changed").then(() => { setChange(null); reload(); history.reload(); })} />
+      <ConfirmDialog open={!!change} title={`Switch to ${change?.name}?`} confirmLabel={online ? "Continue to payment" : "Switch plan"} busy={busy === "c"}
+        message={online
+          ? <>{formatCurrency(change?.price_monthly ?? 0)}/month plus GST, paid by UPI autopay or card through Razorpay. Cancel any time.</>
+          : <>Your new features switch on straight away. {formatCurrency(change?.price_monthly ?? 0)}/month plus GST – we&apos;ll send the invoice separately.</>}
+        onClose={() => setChange(null)} onConfirm={() => change && (online ? subscribe(change)
+          : run("c", () => post("/subscriptions/change-plan", { plan_code: change.code }), "Plan changed").then(() => { setChange(null); reload(); history.reload(); }))} />
     </>
   );
 }

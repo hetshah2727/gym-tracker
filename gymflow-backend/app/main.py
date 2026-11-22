@@ -6,6 +6,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
+
+if settings.SENTRY_DSN:  # optional error monitoring; only when the DSN is set and sentry-sdk is installed
+    try:
+        import sentry_sdk
+
+        sentry_sdk.init(dsn=settings.SENTRY_DSN, environment=settings.ENVIRONMENT, traces_sample_rate=0.05,
+                        send_default_pii=False)
+    except ImportError:
+        logging.getLogger(__name__).warning("SENTRY_DSN is set but sentry-sdk is not installed")
 from app.core.tenant_context import TenantNotSetError
 from app.modules.affiliate.router import router as affiliate_router
 from app.modules.analytics.router import router as analytics_router

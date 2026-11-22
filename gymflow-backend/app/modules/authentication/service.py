@@ -35,6 +35,75 @@ DEFAULT_AUTOMATION_RULES = [
 ]
 
 
+RESET_MINUTES = 30
+REFERRAL_TRIAL_DAYS = 30
+REFERRAL_REWARD_DAYS = 30
+
+
+def reward_referrer(db: Session, gym: Gym) -> bool:
+    """Called when a referred gym's first paid subscription starts: give the referrer one free month (once)."""
+    import uuid as _uuid
+
+    from app.database.models import GymSubscription
+
+    ref_id = (gym.settings or {}).get("referred_by")
+    if not ref_id or (gym.settings or {}).get("referral_rewarded"):
+        return False
+    sub = db.scalar(select(GymSubscription).where(GymSubscription.gym_id == _uuid.UUID(ref_id))
+                    .order_by(GymSubscription.created_at.desc()))
+    if sub is None:
+        return False
+    base = max(sub.current_period_end if sub.current_period_end.tzinfo else sub.current_period_end.replace(tzinfo=timezone.utc),
+               datetime.now(timezone.utc))
+    sub.current_period_end = base + timedelta(days=REFERRAL_REWARD_DAYS)
+    gym.settings = {**(gym.settings or {}), "referral_rewarded": True}
+    log_event(db, sub.gym_id, "referral_reward", status=sub.status.value,
+              notes=f"{REFERRAL_REWARD_DAYS} free days – {gym.name} started paying")
+    return True
+
+
+def _password_fingerprint(user: User) -> str:
+    # Changes whenever the password changes, so a reset link stops working once it has been used.
+    import hashlib
+
+    return hashlib.sha256(user.hashed_password.encode()).hexdigest()[:16]
+
+
+def reset_token(user: User) -> str:
+    return create_access_token(str(user.id), {"purpose": "password_reset", "pw": _password_fingerprint(user)},
+                               expires_minutes=RESET_MINUTES)
+
+
+def send_reset_email(user: User) -> None:
+    from app.services import email
+
+    link = f"{settings.FRONTEND_URL.rstrip('/')}/reset-password?token={reset_token(user)}"
+    email.send(user.email, "Reset your GymFlow password",
+               f"Hi {user.full_name.split()[0]},\n\nUse this link to set a new password (valid for {RESET_MINUTES} "
+               f"minutes):\n{link}\n\nIf you didn't ask for this, you can ignore this email.")
+
+
+def reset_password(db: Session, token: str, password: str) -> TokenResponse:
+    import uuid
+
+    import jwt
+
+    from app.core.security import decode_access_token
+
+    invalid = HTTPException(status.HTTP_400_BAD_REQUEST, "This reset link is invalid or has expired")
+    try:
+        payload = decode_access_token(token)
+        user = db.get(User, uuid.UUID(payload["sub"]))
+    except (jwt.PyJWTError, KeyError, ValueError):
+        raise invalid
+    if (payload.get("purpose") != "password_reset" or user is None or not user.is_active
+            or payload.get("pw") != _password_fingerprint(user)):
+        raise invalid
+    user.hashed_password = hash_password(password)
+    db.commit()
+    return issue_token(user)
+
+
 def issue_token(user: User) -> TokenResponse:
     token = create_access_token(
         str(user.id), {"role": user.role.value, "gym_id": str(user.gym_id) if user.gym_id else None}
@@ -65,14 +134,24 @@ def register_gym(db: Session, data: RegisterGymRequest) -> TokenResponse:
                               channel=channel, template=template))
 
     ensure_default_plans(db)
+    # Referral: the new gym gets a longer trial; the referrer is rewarded once this gym starts paying.
+    referrer = None
+    if data.referral_code:
+        referrer = db.scalar(select(Gym).where(Gym.slug == data.referral_code.strip().lower(), Gym.id != gym.id,
+                                               Gym.is_active.is_(True)))
+        if referrer is not None and not (referrer.settings or {}).get("is_demo"):
+            gym.settings = {**(gym.settings or {}), "referred_by": str(referrer.id)}
+        else:
+            referrer = None
+    trial_days = max(settings.TRIAL_DAYS, REFERRAL_TRIAL_DAYS) if referrer else settings.TRIAL_DAYS
     trial_plan = db.scalar(select(SubscriptionPlan).where(SubscriptionPlan.code == "growth"))
     if trial_plan:
         db.add(GymSubscription(
             gym_id=gym.id, plan_id=trial_plan.id, status=SubscriptionStatus.TRIALING,
-            current_period_end=datetime.now(timezone.utc) + timedelta(days=settings.TRIAL_DAYS),
+            current_period_end=datetime.now(timezone.utc) + timedelta(days=trial_days),
         ))
         log_event(db, gym.id, "trial_started", to_plan=trial_plan.code, status="trialing",
-                  notes=f"{settings.TRIAL_DAYS}-day trial")
+                  notes=f"{trial_days}-day trial" + (f" (referred by {referrer.name})" if referrer else ""))
 
     db.commit()
     db.refresh(owner)

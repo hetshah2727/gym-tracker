@@ -4,20 +4,19 @@ import { Check, LifeBuoy } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { Badge, Button, Card, ErrorNote, Field, Input, Loading, PageHeader, Select, Tabs, Textarea } from "@/components/shared/ui";
 import { useApi } from "@/hooks/useApi";
-import { formatCurrency, formatDate, formatDateTime, humanize } from "@/lib/utils";
+import { formatDateTime, humanize } from "@/lib/utils";
 import { patch, post } from "@/services/api";
-import type { Gym, GymSubscription, SubscriptionPlan } from "@/types";
+import type { Gym } from "@/types";
 
-type View = "profile" | "billing" | "support";
+type View = "profile" | "support";
 
 export default function SettingsPage() {
   const [view, setView] = useState<View>("profile");
   return (
     <>
-      <PageHeader title="Settings" />
-      <Tabs<View> value={view} onChange={setView} tabs={[{ value: "profile", label: "Gym profile" }, { value: "billing", label: "Subscription" }, { value: "support", label: "Support" }]} />
+      <PageHeader title="Gym profile" description="How your gym appears to members, and where they pay." />
+      <Tabs<View> value={view} onChange={setView} tabs={[{ value: "profile", label: "Details" }, { value: "support", label: "Get help" }]} />
       {view === "profile" && <ProfileForm />}
-      {view === "billing" && <Billing />}
       {view === "support" && <Support />}
     </>
   );
@@ -31,7 +30,7 @@ function ProfileForm() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (gym) setForm({ name: gym.name, phone: gym.phone ?? "", email: gym.email ?? "", address: gym.address ?? "", city: gym.city ?? "", logo_url: gym.logo_url ?? "", timezone: gym.timezone, currency: gym.currency });
+    if (gym) setForm({ name: gym.name, phone: gym.phone ?? "", email: gym.email ?? "", address: gym.address ?? "", city: gym.city ?? "", logo_url: gym.logo_url ?? "", timezone: gym.timezone, currency: gym.currency, upi_id: String(gym.settings?.upi_id ?? "") });
   }, [gym]);
 
   if (!gym) return <Loading />;
@@ -42,7 +41,8 @@ function ProfileForm() {
     setSaving(true);
     setError(null);
     try {
-      await patch("/gym", Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v || null])));
+      const { upi_id, ...rest } = form;
+      await patch("/gym", { ...Object.fromEntries(Object.entries(rest).map(([k, v]) => [k, v || null])), settings: { upi_id: upi_id?.trim() || null } });
       setSaved(true);
       reload();
     } catch (err) {
@@ -63,6 +63,9 @@ function ProfileForm() {
           <Field label="City"><Input value={form.city ?? ""} onChange={set("city")} /></Field>
         </div>
         <Field label="Address"><Textarea value={form.address ?? ""} onChange={set("address")} /></Field>
+        <Field label="UPI ID for member payments" hint="Reminders then include a pay page with your QR code (when Razorpay isn't connected). Example: yourgym@okicici">
+          <Input value={form.upi_id ?? ""} onChange={set("upi_id")} placeholder="yourgym@okicici" pattern="^[\w.\-]{2,256}@[A-Za-z]{2,64}$" />
+        </Field>
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Logo URL"><Input value={form.logo_url ?? ""} onChange={set("logo_url")} /></Field>
           <Field label="Currency"><Select value={form.currency ?? "INR"} onChange={set("currency")} options={["INR", "USD", "AED", "GBP"].map((c) => ({ value: c, label: c }))} /></Field>
@@ -74,64 +77,6 @@ function ProfileForm() {
         </div>
       </form>
     </Card>
-  );
-}
-
-function Billing() {
-  const current = useApi<GymSubscription | null>("/subscriptions/current");
-  const plans = useApi<SubscriptionPlan[]>("/subscriptions/plans");
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function change(code: string) {
-    setBusy(code);
-    setError(null);
-    try {
-      await post("/subscriptions/change-plan", { plan_code: code });
-      current.reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not change plan");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  if (current.loading || plans.loading) return <Loading />;
-  const sub = current.data;
-  return (
-    <div className="space-y-4">
-      <ErrorNote message={error} />
-      {sub && (
-        <Card className="p-5">
-          <p className="text-sm text-muted">Current plan</p>
-          <div className="mt-1 flex items-center gap-2">
-            <p className="text-lg font-semibold">{sub.plan?.name}</p>
-            <Badge value={sub.status} />
-          </div>
-          <p className="mt-1 text-sm text-muted">{sub.status === "trialing" ? "Trial ends" : "Renews"} {formatDate(sub.current_period_end)}</p>
-        </Card>
-      )}
-      <div className="grid gap-3 md:grid-cols-3">
-        {plans.data?.map((p) => {
-          const isCurrent = sub?.plan_id === p.id;
-          return (
-            <div key={p.id} className={`card flex flex-col p-5 ${isCurrent ? "border-brand" : ""}`}>
-              <p className="font-semibold">{p.name}</p>
-              <p className="mt-2 text-2xl font-semibold">{formatCurrency(p.price_monthly)}<span className="text-sm font-normal text-muted">/mo</span></p>
-              <p className="mt-1 text-xs text-muted">{p.max_members ? `Up to ${p.max_members} members` : "Unlimited members"}</p>
-              <ul className="mt-4 flex-1 space-y-1.5 text-sm">
-                {Object.entries(p.features).map(([k, on]) => (
-                  <li key={k} className={on ? "" : "text-muted line-through"}>{humanize(k)}</li>
-                ))}
-              </ul>
-              <Button className="mt-4" variant={isCurrent ? "secondary" : "primary"} disabled={isCurrent} loading={busy === p.code} onClick={() => change(p.code)}>
-                {isCurrent ? "Current plan" : "Switch"}
-              </Button>
-            </div>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 

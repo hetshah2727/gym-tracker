@@ -13,6 +13,7 @@ class RegisterGymRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     phone: str | None = None
     city: str | None = None
+    referral_code: str | None = Field(None, max_length=120)
 
 
 class LoginRequest(BaseModel):
@@ -22,6 +23,11 @@ class LoginRequest(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=2000)
+    password: str = Field(min_length=8, max_length=128)
 
 
 class UserOut(ORMModel):

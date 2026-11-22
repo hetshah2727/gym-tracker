@@ -1,14 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState, type FormEvent } from "react";
 import { Button, ErrorNote, Field, Input } from "@/components/shared/ui";
+import { track } from "@/lib/analytics";
 import { homeFor, register, type RegisterInput } from "@/services/auth";
 
 export default function RegisterPage() {
+  return <Suspense><RegisterForm /></Suspense>;
+}
+
+function RegisterForm() {
+  const ref = useSearchParams().get("ref") ?? undefined;
   const router = useRouter();
-  const [form, setForm] = useState<RegisterInput>({ gym_name: "", owner_name: "", email: "", password: "", phone: "", city: "" });
+  const [form, setForm] = useState<RegisterInput>({ gym_name: "", owner_name: "", email: "", password: "", phone: "", city: "", referral_code: ref });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const set = (k: keyof RegisterInput) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value });
@@ -19,7 +25,8 @@ export default function RegisterPage() {
     setError(null);
     try {
       const user = await register(form);
-      router.replace(homeFor(user.role));
+      track("signed_up", { referred: !!form.referral_code });
+      router.replace(user.role === "gym_owner" ? "/dashboard/setup" : homeFor(user.role));
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-up failed");
@@ -31,6 +38,7 @@ export default function RegisterPage() {
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
         <h1 className="font-display text-2xl font-bold">Start your free trial</h1>
+        {ref && <p className="mb-2 rounded-xl bg-money/10 px-3 py-2 text-sm font-medium text-money">A gym owner invited you – your free trial is 30 days.</p>}
         <p className="text-sm text-muted">14 days free, no card needed. We set up common membership plans and WhatsApp reminders for you.</p>
       </div>
       <ErrorNote message={error} />

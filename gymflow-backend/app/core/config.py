@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_ID: str | None = None
     RAZORPAY_KEY_SECRET: str | None = None
     RAZORPAY_WEBHOOK_SECRET: str | None = None
+    # Razorpay Subscriptions plan ids (Dashboard -> Subscriptions -> Plans) for GymFlow's own SaaS billing.
+    RAZORPAY_PLAN_STARTER: str | None = None
+    RAZORPAY_PLAN_GROWTH: str | None = None
+    RAZORPAY_PLAN_PRO: str | None = None
 
     # n8n
     N8N_WEBHOOK_BASE_URL: str | None = None
@@ -96,6 +100,17 @@ class Settings(BaseSettings):
     # Optional keyword-metrics provider. Without one, keyword ideas are labelled as suggestions.
     KEYWORD_PROVIDER: str | None = None
     KEYWORD_PROVIDER_API_KEY: str | None = None
+
+    # Email (password reset, monthly owner report): Resend, or SMTP. Neither -> emails are only logged.
+    EMAIL_FROM: str = "GymFlow <hello@gymflow.app>"
+    RESEND_API_KEY: str | None = None
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USER: str | None = None
+    SMTP_PASSWORD: str | None = None
+
+    # Error monitoring (optional: pip install sentry-sdk)
+    SENTRY_DSN: str | None = None
 
     # "See a live demo gym" button: logs visitors into the IronCore demo tenant (never a real gym)
     DEMO_LOGIN_ENABLED: bool = False

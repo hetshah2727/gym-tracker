@@ -4,7 +4,8 @@ import { Check, MessageCircle } from "lucide-react";
 import { useState } from "react";
 import { useAction } from "@/components/shared/growth";
 import { Button } from "@/components/shared/ui";
-import { cn, daysPhrase, formatCurrency, initials, whatsappLink } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
+import { cn, formatCurrency, initials, whatsappLink } from "@/lib/utils";
 import { post } from "@/services/api";
 
 export interface DueItem {
@@ -31,6 +32,8 @@ export interface DueList {
   items: DueItem[];
   /** Razorpay is connected, so reminders can carry a pay-online link. */
   payment_links?: boolean;
+  /** The gym's UPI ID is set (and Razorpay isn't), so reminders carry a UPI pay page. */
+  upi_payments?: boolean;
 }
 
 /**
@@ -53,10 +56,13 @@ export async function sendReminder(item: DueItem, withLink: boolean): Promise<vo
 
 const METHODS = [{ value: "cash", label: "Cash" }, { value: "upi", label: "UPI" }, { value: "card", label: "Card" }];
 
-function when(item: DueItem) {
-  if (item.kind === "failed") return "online payment failed";
-  if (item.kind === "unpaid") return item.days < 0 ? `fee ${daysPhrase(item.days, "due")}` : "fee due";
-  return `membership ${daysPhrase(item.days, "ends")}`;
+type T = ReturnType<typeof useT>["t"];
+
+function when(item: DueItem, t: T) {
+  if (item.kind === "failed") return t("online payment failed");
+  if (item.kind === "unpaid") return item.days < 0 ? t("fee {d} days late", { d: -item.days }) : t("fee due");
+  if (item.days === 0) return t("membership ends today");
+  return item.days > 0 ? t("membership {d} days left", { d: item.days }) : t("membership ended {d} days ago", { d: -item.days });
 }
 
 /** One person who owes money, with the two things the owner actually does: message them, or mark paid. */
@@ -64,6 +70,7 @@ export function DueRow({ item, currency = "INR", onDone, paymentLinks = false }:
   const [paying, setPaying] = useState(false);
   const [gone, setGone] = useState(false);
   const { busy, run } = useAction();
+  const { t } = useT();
   const late = item.bucket === "overdue";
 
   const remind = () => { void sendReminder(item, paymentLinks); };
@@ -80,9 +87,9 @@ export function DueRow({ item, currency = "INR", onDone, paymentLinks = false }:
         <div className="min-w-0">
           <p className="truncate font-semibold">{item.name}</p>
           <p className="truncate text-xs text-muted">
-            <span className={late ? "font-medium text-danger" : "font-medium text-warning"}>{when(item)}</span>
+            <span className={late ? "font-medium text-danger" : "font-medium text-warning"}>{when(item, t)}</span>
             {item.plan && <> · {item.plan}</>}
-            {item.contact_count > 0 && <> · reminded {item.contact_count}×</>}
+            {item.contact_count > 0 && <> · {t("reminded {n}×", { n: item.contact_count })}</>}
           </p>
         </div>
       </div>
@@ -91,17 +98,17 @@ export function DueRow({ item, currency = "INR", onDone, paymentLinks = false }:
         {paying ? (
           <div className="flex animate-rise gap-1" role="group" aria-label="How did they pay?">
             {METHODS.map((m) => (
-              <Button key={m.value} size="sm" variant="secondary" loading={busy === "pay"} onClick={() => markPaid(m.value)}>{m.label}</Button>
+              <Button key={m.value} size="sm" variant="secondary" loading={busy === "pay"} onClick={() => markPaid(m.value)}>{t(m.label)}</Button>
             ))}
-            <Button size="sm" variant="ghost" onClick={() => setPaying(false)}>Cancel</Button>
+            <Button size="sm" variant="ghost" onClick={() => setPaying(false)}>{t("Cancel")}</Button>
           </div>
         ) : (
           <>
             <Button size="sm" variant="secondary" onClick={remind} aria-label={`Send ${item.name} a WhatsApp reminder`}>
-              <MessageCircle className="h-4 w-4 text-money" /> Remind
+              <MessageCircle className="h-4 w-4 text-money" /> {t("Remind")}
             </Button>
             <Button size="sm" variant="secondary" onClick={() => setPaying(true)}>
-              <Check className="h-4 w-4" /> Paid
+              <Check className="h-4 w-4" /> {t("Paid")}
             </Button>
           </>
         )}

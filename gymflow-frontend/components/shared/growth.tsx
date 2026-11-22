@@ -124,6 +124,7 @@ export interface Entitlements {
   limits: Record<string, number | null>;
   usage: Record<string, number>;
   catalog: Record<string, { label: string; tier: string }>;
+  billing?: { gateway_subscriptions: boolean; note: string };
 }
 
 const EntCtx = createContext<{ ent: Entitlements | null; reload: () => void }>({ ent: null, reload: () => {} });

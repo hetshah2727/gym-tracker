@@ -11,7 +11,7 @@ from app.database.models import User
 from app.database.session import get_db
 from app.modules.authentication import service
 from app.modules.authentication.schemas import (
-    ForgotPasswordRequest, LoginRequest, RegisterGymRequest, TokenResponse, UserOut,
+    ForgotPasswordRequest, LoginRequest, RegisterGymRequest, ResetPasswordRequest, TokenResponse, UserOut,
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -47,8 +47,18 @@ def me(user: User = Depends(get_current_user)):
     return user
 
 
-@router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED)
-def forgot_password(data: ForgotPasswordRequest):
-    # Always 202 so the endpoint can't be used to discover registered emails.
-    # TODO: issue a short-lived reset token and email/WhatsApp it to the user.
+@router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED,
+             dependencies=[Depends(public_limit("forgot-password", 5))])
+def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """Emails a 30-minute reset link. Always 202 so the endpoint can't reveal which emails are registered."""
+    user = db.scalar(select(User).where(User.email == data.email.lower()))
+    if user is not None and user.is_active:
+        service.send_reset_email(user)
     return {"detail": "If that email is registered, a reset link has been sent."}
+
+
+@router.post("/reset-password", response_model=TokenResponse)
+def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db),
+                   _=Depends(public_limit("reset-password", 10))):
+    """Sets a new password from a valid reset link (each link works once) and logs the user in."""
+    return service.reset_password(db, data.token, data.password)

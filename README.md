@@ -104,12 +104,27 @@ All integrations are optional. When one is not configured it runs in **dev mode*
 | n8n | `N8N_WEBHOOK_BASE_URL`, `N8N_API_KEY` | Outbound events: `member.created`, `membership.created`, `payment.paid`, `lead.created`, plus per-rule workflows. Inbound: `POST /api/v1/automation/n8n/send` with `X-N8N-Key`. |
 | Amazon Associates | `AMAZON_ASSOCIATE_TAG` | Links carry `ascsubtag=<link code>` so report rows map back to gym and trainer. |
 
+## Owner tools
+
+| Feature | Where | Notes |
+|---|---|---|
+| Setup wizard | `/dashboard/setup` (new owners land here after sign-up) | Gym details + UPI ID → plan prices → import members → reminders → done |
+| Import members from Excel/CSV | Members → *Import from Excel*, or the wizard | Preview first; flexible column names; de-duplicated by phone; creates current memberships when plan + expiry are given (`POST /members/import`) |
+| Front-desk kiosk | `/kiosk` (Check-in → *Open front-desk kiosk*) | Phone-digit keypad, days left / dues, UPI QR when fees are due, PIN to exit |
+| Member side panel | Members → tap a member | Plan, dues, visits, memberships, payments, renew / WhatsApp |
+| UPI pay page | Settings → *UPI ID*; public `/pay/<gym-slug>` | Used in reminders when Razorpay isn't connected (QR + "open UPI app"); staff mark paid |
+| Monthly owner report | Money → Reports | Share on WhatsApp, print/PDF, email; emailed on the 1st by `app.workers.monthly_worker` |
+| Password reset | `/forgot-password` → email → `/reset-password` | 30-minute single-use link; reset tokens can't be used to log in |
+| SaaS billing | Settings → Subscription | Razorpay Subscriptions when `RAZORPAY_PLAN_*` are set; otherwise plan switches are invoiced separately |
+| Referrals | Settings → Subscription → *Invite a gym owner* | Referred gym: 30-day trial. Referrer: 30 free days when the referred gym's first payment arrives |
+| Hindi | हिं / EN switch in the sidebar or top bar | Navigation, Today and Money screens (`lib/i18n.ts`) |
+| Demo | "See a live demo gym" (`DEMO_LOGIN_ENABLED`) | Guided tour on Today; demo gym is reset nightly at 3 AM when the scheduler runs |
+
 ## Known gaps / next steps
 
 See also [docs/GROWTH_ENGINE.md](docs/GROWTH_ENGINE.md#5-known-gaps).
 
-- Password reset only returns 202; email/WhatsApp delivery of a reset token isn't built yet.
-- Plan changes (*Plan & usage*) switch the plan directly and are logged; Razorpay subscription billing and proration are not implemented.
+- Razorpay subscription billing works once plan ids are configured; proration between plans is not implemented.
 - Affiliate conversions are recorded by the platform admin (from network reports); there's no automated report import.
 - Custom domains are stored and served via `GET /public/sites/by-domain`; DNS/TLS provisioning and host-based routing in the frontend aren't wired up.
 - The frontend stores the JWT in a JS-readable cookie so middleware can route by role. For production, consider an httpOnly cookie set by the API.

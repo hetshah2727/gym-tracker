@@ -142,3 +142,48 @@ def _xml(value: str) -> str:
 
 
 __all__ = ["router", "timezone"]
+
+
+# ---------------------------------------------------------------- UPI pay page (when Razorpay isn't connected)
+
+UPI_RE = re.compile(r"^[\w.\-]{2,256}@[A-Za-z]{2,64}$")
+
+
+def _upi_gym(db: Session, slug: str) -> Gym:
+    from sqlalchemy import select
+
+    gym = db.scalar(select(Gym).where(Gym.slug == slug, Gym.is_active.is_(True)))
+    upi = (gym.settings or {}).get("upi_id") if gym else None
+    if gym is None or not upi or not UPI_RE.match(upi):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Online payment isn't set up for this gym")
+    return gym
+
+
+def upi_uri(gym: Gym, amount: float | None, note: str | None) -> str:
+    from urllib.parse import quote
+
+    parts = [f"pa={quote(gym.settings['upi_id'])}", f"pn={quote(gym.name[:50])}", "cu=INR"]
+    if amount:
+        parts.append(f"am={amount:.2f}")
+    if note:
+        parts.append(f"tn={quote(note[:60])}")
+    return "upi://pay?" + "&".join(parts)
+
+
+@router.get("/{slug}/pay", dependencies=[Depends(rate_limit.public_limit("public_pay", 60))])
+def pay_info(slug: str, amount: float | None = None, note: str | None = None, db: Session = Depends(get_db)):
+    gym = _upi_gym(db, slug)
+    amount = amount if amount and 0 < amount < 1_000_000 else None
+    return {"gym": gym.name, "phone": gym.phone, "logo_url": gym.logo_url, "upi_id": gym.settings["upi_id"],
+            "amount": amount, "upi_uri": upi_uri(gym, amount, note)}
+
+
+@router.get("/{slug}/pay/qr.svg", dependencies=[Depends(rate_limit.public_limit("public_pay", 60))])
+def pay_qr(slug: str, amount: float | None = None, note: str | None = None, db: Session = Depends(get_db)):
+    import segno
+
+    gym = _upi_gym(db, slug)
+    amount = amount if amount and 0 < amount < 1_000_000 else None
+    buf = __import__("io").BytesIO()
+    segno.make(upi_uri(gym, amount, note), error="m").save(buf, kind="svg", scale=8, border=2)
+    return Response(buf.getvalue(), media_type="image/svg+xml", headers={"Cache-Control": "no-store"})

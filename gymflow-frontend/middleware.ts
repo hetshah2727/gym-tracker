@@ -9,6 +9,7 @@ const AREAS: { prefix: string; roles: string[] }[] = [
   { prefix: "/platform", roles: ["platform_admin"] },
   { prefix: "/dashboard", roles: ["gym_owner", "gym_manager", "trainer", "platform_admin"] },
   { prefix: "/editor", roles: ["gym_owner", "gym_manager", "platform_admin"] },
+  { prefix: "/kiosk", roles: ["gym_owner", "gym_manager", "trainer"] },
   { prefix: "/member", roles: ["member"] },
 ];
 
@@ -43,5 +44,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/login", "/register", "/platform/:path*", "/dashboard/:path*", "/editor/:path*", "/member/:path*"],
+  matcher: ["/", "/login", "/register", "/platform/:path*", "/dashboard/:path*", "/editor/:path*", "/member/:path*", "/kiosk"],
 };

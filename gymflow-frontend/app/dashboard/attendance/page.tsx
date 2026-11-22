@@ -1,6 +1,7 @@
 "use client";
 
-import { CalendarCheck, LogIn, LogOut, Search } from "lucide-react";
+import { CalendarCheck, LogIn, LogOut, Search, Tablet } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Badge, Button, Card, EmptyState, ErrorNote, Input, Loading, PageHeader } from "@/components/shared/ui";
 import { useApi } from "@/hooks/useApi";
@@ -45,7 +46,8 @@ export default function AttendancePage() {
 
   return (
     <>
-      <PageHeader title="Attendance" description="Check members in and see who trained today." />
+      <PageHeader title="Check-in" description="Check members in and see who trained today."
+        actions={<Link href="/kiosk" className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-brand-fg"><Tablet className="h-4 w-4" /> Open front-desk kiosk</Link>} />
       <Card className="mb-6 p-4">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted" />

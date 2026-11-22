@@ -1,10 +1,12 @@
 "use client";
 
-import { KeyRound, MessageCircle, Plus, Search, Ticket, UserPlus, Users } from "lucide-react";
+import { FileSpreadsheet, KeyRound, MessageCircle, Plus, Search, Ticket, UserPlus, Users } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AssignMembershipForm } from "@/components/members/AssignMembershipForm";
+import { ImportMembers } from "@/components/members/ImportMembers";
 import { MemberForm } from "@/components/members/MemberForm";
+import { MemberSheet } from "@/components/members/MemberSheet";
 import { Button, Card, EmptyState, ErrorNote, Field, Input, Loading, Modal, PageHeader } from "@/components/shared/ui";
 import { useApi } from "@/hooks/useApi";
 import { usePlans, useTrainers } from "@/hooks/useLookups";
@@ -26,6 +28,8 @@ export default function MembersPage() {
   const [editing, setEditing] = useState<Member | "new" | null>(null);
   const [assignFor, setAssignFor] = useState<Member | null>(null);
   const [portalFor, setPortalFor] = useState<Member | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const isTrainer = useRole() === "trainer";
   useEffect(() => { if (params.get("new") === "1") setEditing("new"); }, [params]);
 
@@ -34,7 +38,10 @@ export default function MembersPage() {
       <PageHeader
         title={isTrainer ? "My members" : "Members"}
         description={data ? `${data.total} ${status ? status : ""} member${data.total === 1 ? "" : "s"}`.replace("  ", " ") : "Everyone who trains at your gym."}
-        actions={!isTrainer && <Button onClick={() => setEditing("new")}><Plus className="h-4 w-4" /> Add member</Button>}
+        actions={!isTrainer && <>
+          <Button variant="secondary" onClick={() => setImporting(true)}><FileSpreadsheet className="h-4 w-4" /> Import from Excel</Button>
+          <Button onClick={() => setEditing("new")}><Plus className="h-4 w-4" /> Add member</Button>
+        </>}
       />
       <Card>
         <div className="flex flex-col gap-2 border-b border-border p-3 sm:flex-row">
@@ -61,7 +68,7 @@ export default function MembersPage() {
               const tone = days == null ? "text-muted" : days < 0 ? "text-danger" : days <= 7 ? "text-warning" : "text-muted";
               return (
                 <li key={m.id} className="flex flex-col gap-2 px-4 py-3 hover:bg-surface-2/60 sm:flex-row sm:items-center sm:gap-4 sm:px-5">
-                  <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => !isTrainer && setEditing(m)}>
+                  <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => !isTrainer && setViewing(m.id)}>
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-2 text-xs font-bold">{initials(m.full_name)}</span>
                     <span className="min-w-0">
                       <span className="block truncate font-semibold">{m.full_name}</span>
@@ -121,6 +128,13 @@ export default function MembersPage() {
         {assignFor && (
           <AssignMembershipForm members={[assignFor]} plans={plans} defaultMemberId={assignFor.id} onSaved={() => { setAssignFor(null); reload(); }} />
         )}
+      </Modal>
+
+      <MemberSheet memberId={viewing} onClose={() => setViewing(null)}
+        onEdit={(m) => { setViewing(null); setEditing(m); }} onRenew={(m) => { setViewing(null); setAssignFor(m); }} />
+
+      <Modal open={importing} onClose={() => { setImporting(false); reload(); }} title="Import members from Excel" wide>
+        {importing && <ImportMembers onDone={() => reload()} />}
       </Modal>
 
       <Modal open={!!portalFor} onClose={() => setPortalFor(null)} title="Member app access">

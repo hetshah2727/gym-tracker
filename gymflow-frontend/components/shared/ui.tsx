@@ -225,3 +225,26 @@ export function InfoTip({ children, label = "How we count this" }: { children: R
     </details>
   );
 }
+
+/** Right-hand slide-over for details, so the list stays visible behind it (bottom sheet on phones). */
+export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-end bg-black/40 sm:items-stretch" onClick={onClose}>
+      <aside role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}
+        className="max-h-[92vh] w-full animate-rise overflow-y-auto rounded-t-3xl bg-surface p-5 shadow-soft sm:max-h-none sm:max-w-md sm:rounded-none sm:rounded-l-3xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-display text-lg font-bold">{title}</h2>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-fg" aria-label="Close"><X className="h-4 w-4" /></button>
+        </div>
+        {children}
+      </aside>
+    </div>
+  );
+}

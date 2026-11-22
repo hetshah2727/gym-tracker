@@ -1,7 +1,7 @@
 # GymFlow: UI/UX Revamp Plan (5/10 → 9.5/10)
 
 > **Goal:** make GymFlow something a non-technical gym owner understands in 10 seconds, trusts in 2 minutes and pays for in one demo.
-> **Status:** plan only. Nothing here is implemented yet.
+> **Status:** mostly implemented – see [Implementation status](#11-implementation-status) at the end.
 > **Date:** 22 Nov 2026
 
 ---
@@ -537,3 +537,37 @@ NEXT_PUBLIC_RAZORPAY_KEY_ID=rzp_live_...                # 🆕 checkout for your
 | WhatsApp | Needs Meta approval before anything works | Works from day one via `wa.me`, upgrades to automatic later |
 | Look | Generic AI dark dashboard | Branded, light, number-first, mobile-first |
 | Sales story | "We have SEO, CRM, AI agents…" | "We pay for ourselves, and here's the receipt every month." |
+
+---
+
+## 11. Implementation status
+
+_Updated 22 Nov 2026._
+
+| Plan item | Status | Where |
+|---|---|---|
+| 5+1 navigation, mobile bottom bar, quick-add "+", nav badges | ✅ Done | `components/dashboard/nav.ts`, `AppShell.tsx` |
+| Today: money hero, ROI card, person-level to-do list, setup checklist | ✅ Done | `app/dashboard/overview` |
+| Money → Due now, one-tap *Mark paid*, WhatsApp reminder queue | ✅ Done | `app/dashboard/money`, `POST /recovery/opportunities/{id}/mark-paid` |
+| Members: days left, dues, last visit, WhatsApp; side panel with timeline | ✅ Done | `MemberSheet.tsx`, `GET /members/{id}/timeline` |
+| Enquiries: plain stages, Hot/Warm/Cold | ✅ Done | `LeadDrawer.tsx`, leads page |
+| Grow: one online score + "fix these next" | ✅ Done | `app/dashboard/grow` |
+| Plain-language copy, dev text removed from owner screens | ✅ Done | across pages |
+| Design system: light-first tokens, display font, skeletons, Sheet, InfoTip | ✅ Done | `globals.css`, `components/shared/ui.tsx` |
+| Landing page, ROI calculator, one-click demo + guided tour | ✅ Done | `app/page.tsx`, `DemoButton.tsx`, Today `DemoTour` |
+| Pricing by outcome, referral programme | ✅ Done | `app/dashboard/plan` |
+| Setup wizard + Excel/CSV import | ✅ Done | `app/dashboard/setup`, `ImportMembers.tsx`, `POST /members/import` |
+| Front-desk check-in kiosk | ✅ Done | `app/kiosk` |
+| `wa.me` reminders, Razorpay links, UPI pay page/QR fallback | ✅ Done | `DueRow.tsx`, `app/pay/[slug]` |
+| Monthly owner report (WhatsApp / PDF / email) | ✅ Done | `OwnerReport.tsx`, `app/workers/monthly_worker.py` |
+| Password reset by email | ✅ Done | `/forgot-password`, `/reset-password` |
+| Razorpay SaaS subscription billing | ✅ Done (needs plan ids) | `POST /subscriptions/checkout`, webhook |
+| Hindi | 🟡 Partial – navigation, Today, Money | `lib/i18n.ts` |
+| PWA | 🟡 Manifest + icon (installable); no offline mode | `public/manifest.webmanifest` |
+| Analytics / error monitoring | ✅ Optional, env-gated (PostHog capture API, Sentry) | `lib/analytics.ts`, `app/main.py` |
+| Groq for text/agents, Gemini for posts, images, live search | ✅ Done (images need Gemini billing) | `app/integrations/ai/` |
+| shadcn/ui adoption | ⏭️ Replaced by our own small Sheet / InfoTip / Skeleton components (no new dependency) | — |
+| Hindi on every screen, Gujarati/Marathi | ⬜ Open | extend `lib/i18n.ts` |
+| Photo-of-register OCR, Google Sheets live link | ⬜ Open | CSV export from Sheets works today |
+| Shared (Redis) rate limiting, SMS/OTP via MSG91 | ⬜ Open | only needed at scale / for OTP login |
+| Usability test with 3–5 gym owners | ⬜ Open | needs real owners – the last step to 9.5 |
