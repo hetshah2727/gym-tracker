@@ -56,7 +56,16 @@ def list_attendance(
     if member_id:
         filters.append(Attendance.member_id == member_id)
     else:
-        day = on or date.today()
-        start = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
+        # "Today" is the gym's local day (e.g. IST), not the UTC day - otherwise early-morning check-ins
+        # (before 05:30 IST) would land on the previous day.
+        from zoneinfo import ZoneInfo
+
+        from app.core.tenant_context import get_current_gym_id
+        from app.database.models import Gym
+
+        gym = db.get(Gym, get_current_gym_id())
+        tz = ZoneInfo(gym.timezone if gym and gym.timezone else "Asia/Kolkata")
+        day = on or datetime.now(tz).date()
+        start = datetime.combine(day, datetime.min.time(), tzinfo=tz).astimezone(timezone.utc)
         filters += [Attendance.check_in_at >= start, Attendance.check_in_at < start + timedelta(days=1)]
     return TenantRepository(Attendance, db).list(*filters, limit=1000, order_by=Attendance.check_in_at.desc())

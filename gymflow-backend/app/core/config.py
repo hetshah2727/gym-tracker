@@ -5,10 +5,19 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _env_files() -> tuple[str, ...]:
+    here = Path(__file__).resolve()
+    repo_root = here.parents[3] if len(here.parents) > 3 else here.parent
+    return (str(repo_root / ".env"), ".env")
+
+
+_ENV_FILES = _env_files()
+
+
 class Settings(BaseSettings):
-    # The repo-root .env (shared keys) is read first; gymflow-backend/.env overrides it.
-    model_config = SettingsConfigDict(env_file=(str(Path(__file__).resolve().parents[3] / ".env"), ".env"),
-                                      env_file_encoding="utf-8", extra="ignore")
+    # The repo-root .env (shared keys) is read first; gymflow-backend/.env overrides it. On hosts like Vercel
+    # neither file exists and settings come from the environment.
+    model_config = SettingsConfigDict(env_file=_ENV_FILES, env_file_encoding="utf-8", extra="ignore")
 
     APP_NAME: str = "GymFlow"
     ENVIRONMENT: str = "development"
@@ -109,6 +118,9 @@ class Settings(BaseSettings):
     SMTP_USER: str | None = None
     SMTP_PASSWORD: str | None = None
 
+    # Shared secret for /cron/* endpoints (Vercel Cron sends it as "Authorization: Bearer <CRON_SECRET>")
+    CRON_SECRET: str | None = None
+
     # Error monitoring (optional: pip install sentry-sdk)
     SENTRY_DSN: str | None = None
 
@@ -124,6 +136,11 @@ def get_settings() -> Settings:
     s = Settings()
     if s.ENVIRONMENT == "production" and (s.SECRET_KEY == "change-me-in-production" or len(s.SECRET_KEY) < 32):
         raise RuntimeError("Set a strong SECRET_KEY (32+ characters) in production")
+    import os
+
+    if os.environ.get("VERCEL") and s.DATABASE_URL.startswith("sqlite"):
+        # Serverless file systems are temporary: every deploy/cold start would lose all data.
+        raise RuntimeError("Set DATABASE_URL to a PostgreSQL database (e.g. Neon) when running on Vercel")
     return s
 
 

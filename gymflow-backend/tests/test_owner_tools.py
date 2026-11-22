@@ -112,3 +112,17 @@ def test_referral_longer_trial_and_reward_when_referred_gym_pays(client, owner):
     after = client.get(f"{API}/subscriptions/current", headers=owner).json()["current_period_end"]
     assert (datetime.fromisoformat(after) - datetime.fromisoformat(before)).days >= 29
     assert client.get(f"{API}/subscriptions/referral", headers=owner).json()["paying"] == 1
+
+
+def test_cron_endpoints_need_the_secret_and_docs_stay_available_in_dev(client, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "CRON_SECRET", "cron-test-secret")
+    assert client.get(f"{API}/cron/daily").status_code == 404
+    assert client.get(f"{API}/cron/daily", headers={"Authorization": "Bearer wrong"}).status_code == 404
+    r = client.get(f"{API}/cron/daily", headers={"Authorization": "Bearer cron-test-secret"})
+    assert r.status_code == 200 and {"expiry", "payments", "growth", "notifications"} <= set(r.json())
+    assert client.get(f"{API}/cron/notifications", headers={"Authorization": "Bearer cron-test-secret"}).status_code == 200
+    monkeypatch.setattr(settings, "CRON_SECRET", None)
+    assert client.get(f"{API}/cron/daily", headers={"Authorization": "Bearer "}).status_code == 404
+    assert client.get("/health").headers["x-content-type-options"] == "nosniff"

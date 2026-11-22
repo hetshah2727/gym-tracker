@@ -18,6 +18,8 @@ const PITCH: Record<string, { promise: string; who: string }> = {
   pro: { promise: "Fill my gym", who: "Get found on Google, Maps and AI apps, and turn visitors into members." },
 };
 const HIDDEN = new Set(["affiliate", "voice_calls"]);
+// Hosted Razorpay payment link used until Razorpay Subscriptions (plan ids) are configured on the API.
+const PAYMENT_LINK = process.env.NEXT_PUBLIC_PAYMENT_LINK ?? "https://rzp.io/rzp/05mrQLg";
 interface Checkout { configured: boolean; subscription_id?: string; short_url?: string; key_id?: string; plan_name?: string }
 type RazorpayCtor = new (opts: Record<string, unknown>) => { open: () => void };
 
@@ -116,7 +118,10 @@ export default function PlanPage() {
               </ul>
               <div className="mt-6">
                 {current ? (
-                  <div className="rounded-xl bg-surface-2 py-2.5 text-center text-sm font-semibold">Your current plan</div>
+                  !online && PAYMENT_LINK && ent.status !== "active" ? (
+                    <a href={PAYMENT_LINK} onClick={() => track("checkout_started", { plan: p.code, via: "payment_link" })}
+                      className="block rounded-xl bg-brand py-2.5 text-center text-sm font-semibold text-brand-fg">Pay for {p.name}</a>
+                  ) : <div className="rounded-xl bg-surface-2 py-2.5 text-center text-sm font-semibold">Your current plan</div>
                 ) : (
                   <Button className="w-full" variant={featured ? "primary" : "secondary"} onClick={() => setChange(p)}>Switch to {p.name}</Button>
                 )}
@@ -152,12 +157,17 @@ export default function PlanPage() {
         </Card>
       </div>
 
-      <ConfirmDialog open={!!change} title={`Switch to ${change?.name}?`} confirmLabel={online ? "Continue to payment" : "Switch plan"} busy={busy === "c"}
+      <ConfirmDialog open={!!change} title={`Switch to ${change?.name}?`} confirmLabel={online || PAYMENT_LINK ? "Continue to payment" : "Switch plan"} busy={busy === "c"}
         message={online
           ? <>{formatCurrency(change?.price_monthly ?? 0)}/month plus GST, paid by UPI autopay or card through Razorpay. Cancel any time.</>
-          : <>Your new features switch on straight away. {formatCurrency(change?.price_monthly ?? 0)}/month plus GST – we&apos;ll send the invoice separately.</>}
+          : PAYMENT_LINK
+            ? <>Your new features switch on straight away. Next you&apos;ll go to Razorpay to pay {formatCurrency(change?.price_monthly ?? 0)}/month (plus GST) by UPI, card or netbanking.</>
+            : <>Your new features switch on straight away. {formatCurrency(change?.price_monthly ?? 0)}/month plus GST – we&apos;ll send the invoice separately.</>}
         onClose={() => setChange(null)} onConfirm={() => change && (online ? subscribe(change)
-          : run("c", () => post("/subscriptions/change-plan", { plan_code: change.code }), "Plan changed").then(() => { setChange(null); reload(); history.reload(); }))} />
+          : run("c", () => post("/subscriptions/change-plan", { plan_code: change.code }), "Plan changed").then((r) => {
+            setChange(null); reload(); history.reload();
+            if (r && PAYMENT_LINK) { track("checkout_started", { plan: change.code, via: "payment_link" }); window.location.href = PAYMENT_LINK; }
+          }))} />
     </>
   );
 }

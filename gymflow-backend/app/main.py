@@ -16,6 +16,7 @@ if settings.SENTRY_DSN:  # optional error monitoring; only when the DSN is set a
     except ImportError:
         logging.getLogger(__name__).warning("SENTRY_DSN is set but sentry-sdk is not installed")
 from app.core.tenant_context import TenantNotSetError
+from app.modules.cron.router import router as cron_router
 from app.modules.affiliate.router import router as affiliate_router
 from app.modules.analytics.router import router as analytics_router
 from app.modules.attendance.router import router as attendance_router
@@ -62,8 +63,27 @@ async def lifespan(app: FastAPI):
         scheduler.shutdown(wait=False)
 
 
+_public_docs = settings.ENVIRONMENT != "production"  # API docs and schema are hidden in production
 app = FastAPI(title=settings.APP_NAME, version="1.0.0", lifespan=lifespan,
-              description="GymFlow - AI-powered gym revenue growth engine")
+              description="GymFlow - AI-powered gym revenue growth engine",
+              docs_url="/docs" if _public_docs else None, redoc_url="/redoc" if _public_docs else None,
+              openapi_url="/openapi.json" if _public_docs else None)
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    return response
+
+
+@app.exception_handler(Exception)
+async def unhandled_error(_: Request, exc: Exception):
+    # Never leak internals (stack traces, SQL, file paths) to the browser; the details go to the logs.
+    logging.getLogger("gymflow").exception("Unhandled error", exc_info=exc)
+    return JSONResponse(status_code=500, content={"detail": "Something went wrong. Please try again."})
 
 app.add_middleware(
     CORSMiddleware,
@@ -85,7 +105,7 @@ for r in (
     notifications_router, diet_router, affiliate_router, websites_router, public_router, leads_router,
     analytics_router, subscriptions_router, support_router,
     growth_router, crm_router, trials_router, recovery_router, seo_router, local_router, ai_search_router,
-    profile_router, ai_router, integrations_router, whatsapp_webhook_router,
+    profile_router, ai_router, integrations_router, whatsapp_webhook_router, cron_router,
 ):
     app.include_router(r, prefix=settings.API_PREFIX)
 

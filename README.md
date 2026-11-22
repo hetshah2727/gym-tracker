@@ -33,6 +33,8 @@ gymflow-frontend/   Next.js 15 App Router + Tailwind
 docker-compose.yml  postgres + api + n8n + web
 ```
 
+**Deploying?** See [docs/DEPLOY_VERCEL.md](docs/DEPLOY_VERCEL.md) (two Vercel projects + Neon Postgres + Vercel Cron).
+
 ## Quick start (local)
 
 **Backend** (Python 3.10+)
